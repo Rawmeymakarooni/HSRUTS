@@ -1,0 +1,2014 @@
+#include <iostream>
+#include <string>
+#include <vector>
+#include <cstdlib>
+#include <ctime>
+#include <map>
+#include <set>
+#include <fstream>
+#include <algorithm>
+#include <unordered_map>
+#include <regex>
+#include <limits>
+#include <windows.h>
+#include <mmsystem.h>
+#pragma comment(lib, "winmm.lib")
+
+using namespace std;
+
+enum BannerType { RATE_UP, STANDARD, LIGHTCONE };
+BannerType currentBanner = STANDARD;
+enum CharacterType { DPS, BUFFER, DEBUFFER, HEALER, SHIELDER };
+
+unordered_map<string, string> equippedLightcones; 
+unordered_map<string, int> lightconeSuperimposition;
+
+vector<string> fiveStarCharacters = {
+    "Bronya", "Clara", "Gepard", "Himeko", "Seele", "Yanqing", "Bailu", "Welt", "Fu Xuan", "Sparkle", "Silver Wolf", "Black Swan", "Luocha"
+};
+
+vector<string> fourStarCharacters = {
+    "Arlan", "Asta", "Dan Heng", "Hook", "March 7th", "Natasha", "Pela", "Sampo", "Serval", "Tingyun"
+};
+
+string rateUpCharacter = "Castorice";
+string rateUpLightcones = "Make Farewell More Beautiful";
+vector<string> lightcones = {"Before Dawn", "Night on the Milky Way", "Incessant Rain", "Earthly Escapade",
+    "She Already Shut Her Eyes", "Reforged Remembrance", "Echoes of the Coffin"};
+vector<string> standardLightcones = {"Sleep Like the Dead", "The Battle Isn't Over", "Moment of Victory"};
+
+vector<string> threeStarLightcones = {
+    "Darting Arrow",
+    "Meshing Cogs",
+    "Chorus",
+    "So Adversarial",
+    "Passkey",
+    "Loop",
+    "Multiplication",
+    "Collapsing Sky",
+    "Shattered Home",
+    "Void"
+};
+
+vector<string> shopCharacters = {
+    "Castorice", "Silver Wolf", "Sparkle", "Fu Xuan", "Black Swan", "Luocha"
+};
+
+vector<string> shopLightcones = {
+    "Make Farewell More Beautiful", "Incessant Rain", "Earthly Escapade",
+    "She Already Shut Her Eyes", "Reforged Remembrance", "Echoes of the Coffin"
+};
+
+map<string, int> ownedCharacters;
+int starglitter = 0;
+vector<string> team;
+
+int pityCounter5RateUp = 0, pityCounter4RateUp = 0;
+int pityCounter5Standard = 0, pityCounter4Standard = 0;
+int pityCounter5Lightcone = 0, pityCounter4Lightcone = 0;
+static bool guaranteedLightconeNext = false;
+
+struct Lightcone {
+    string name;
+    int bonusHP, bonusATK, bonusDEF;
+    float bonusCritRate, bonusCritDamage;
+};
+
+struct Character {
+    string name;
+    int baseHP, baseATK, baseDEF;
+    float baseCritRate, baseCritDamage;
+    int currentHP = 0;
+    int shield = 0;
+    int skillCount = 0;
+    CharacterType type;
+    Lightcone* equippedLightcone = nullptr;
+
+    int getTotalHP() const { return baseHP + (equippedLightcone ? equippedLightcone->bonusHP : 0); }
+    int getTotalATK() const { return baseATK + (equippedLightcone ? equippedLightcone->bonusATK : 0); }
+    int getTotalDEF() const { return baseDEF + (equippedLightcone ? equippedLightcone->bonusDEF : 0); }
+    float getTotalCritRate() const { return baseCritRate + (equippedLightcone ? equippedLightcone->bonusCritRate : 0.0f); }
+    float getTotalCritDamage() const { return baseCritDamage + (equippedLightcone ? equippedLightcone->bonusCritDamage : 0.0f); }
+
+    void initHP() { currentHP = getTotalHP(); }
+};
+
+CharacterType getCharacterType(const string& name) {
+    static set<string> dps = {"Castorice", "Clara", "Himeko", "Seele", "Yanqing", "Arlan", "Dan Heng", "Hook", "Serval", "Welt"};
+    static set<string> buffer = {"Bronya", "Asta", "Tingyun", "Sparkle"};
+    static set<string> debuffer = {"Pela", "Sampo", "Silver Wolf", "Black Swan"};
+    static set<string> healer = {"Natasha", "Bailu", "Luocha"};
+    static set<string> shielder = {"Gepard", "March 7th", "Fu Xuan"};
+
+    if (dps.count(name)) return DPS;
+    if (buffer.count(name)) return BUFFER;
+    if (debuffer.count(name)) return DEBUFFER;
+    if (healer.count(name)) return HEALER;
+    if (shielder.count(name)) return SHIELDER;
+    return DPS;
+}
+
+void applyEidolonStatBoosts(Character& ch, int eidolon) {
+    if (eidolon <= 0) return;
+
+    switch (ch.type) {
+        case DPS:
+            ch.baseCritDamage += 10.0f * eidolon; 
+            break;
+        case BUFFER:
+            ch.baseATK += 10 * eidolon;  
+            break;
+        case DEBUFFER:
+            ch.baseATK += 10 * eidolon;  
+            break;
+        case HEALER:
+            ch.baseHP += 80 * eidolon;   
+            break;
+        case SHIELDER:
+            ch.baseDEF += 40 * eidolon; 
+            break;
+    }
+}
+
+inline int getEidolonLevel(const string& name) {
+    size_t pos = name.find("E");
+    if (pos != string::npos)
+        return stoi(name.substr(pos + 1));
+    return 0;
+}
+
+string getBaseName(const string& fullName) {
+    string name = fullName;
+    // 1) Hapus suffix " E<number>" jika ada
+    static const regex eidolonRe(R"(^(.*)\sE[1-6]$)");
+    smatch m;
+    if (regex_match(name, m, eidolonRe)) {
+        name = m[1].str();
+    }
+    // 2) Hapus suffix "(Starglitter ...)" jika ada
+    size_t pos = name.find(" (Starglitter");
+    if (pos != string::npos) {
+        name = name.substr(0, pos);
+    }
+    // 3) Trim spasi di ujung
+    while (!name.empty() && isspace(name.back())) 
+        name.pop_back();
+    return name;
+}
+
+Character createCharacter(const string& rawName) {
+    string name = getBaseName(rawName);
+    if (name == "Castorice") // Rate-on (DPS)
+        return {"Castorice", 1500, 380, 220, 20.0f, 70.0f}; // High crit
+    if (name == "Clara" || name == "Seele" || name == "Yanqing" || name == "Himeko" || name == "Welt") // DPS 5
+        return {name, 1350, 360, 210, 30.0f, 60.0f};
+    if (name == "Gepard" || name == "Fu Xuan") // Shielder 5
+        return {name, 1400, 310, 420, 6.0f, 50.0f}; 
+    if (name == "Bronya" || name == "Sparkle") // Buffer 5
+        return {name, 1250, 390, 190, 5.0f, 40.0f};
+    if (name == "Silver Wolf" || name == "Black Swan") // Debuffer 5
+        return {name, 1250, 370, 200, 10.0f, 50.0f};
+    if (name == "Bailu" || name == "Luocha") // Healer 5
+        return {name, 1700, 320, 180, 5.0f, 40.0f};
+    if (name == "Arlan" || name == "Dan Heng" || name == "Hook" || name == "Serval") // DPS 4
+        return {name, 1100, 300, 180, 20.0f, 50.0f};
+    if (name == "Asta" || name == "Tingyun") // Buffer 4
+        return {name, 1050, 320, 160, 4.0f, 30.0f};
+    if (name == "Pela" || name == "Sampo") // Debuffer 4
+        return {name, 1050, 310, 160, 8.0f, 30.0f};
+    if (name == "Natasha") // Healer 4
+        return {name, 1250, 270, 160, 3.0f, 20.0f};
+    if (name == "March 7th") // Shielder 4
+        return {name, 1200, 260, 280, 3.0f, 25.0f};    
+    return {name, 900, 250, 150, 2.5f, 25.0f}; // Default untuk karakter yang tidak dikenali
+}
+
+Lightcone createLightcone(const string& name) {
+    if (name == "Make Farewell More Beautiful")
+        return {name, 400, 100, 80, 10.0f, 40.0f};
+    if (name == "Before Dawn" || name == "Night on the Milky Way" ||
+    name == "Incessant Rain" || name == "Earthly Escapade" ||
+    name == "She Already Shut Her Eyes" || name == "Reforged Remembrance" ||
+    name == "Echoes of the Coffin")
+        return {name, 300, 80, 60, 5.0f, 30.0f};
+    if (name == "Sleep Like the Dead" || name == "The Battle Isn't Over" || name == "Moment of Victory")
+        return {name, 250, 65, 50, 3.0f, 20.0f};
+    return {name, 100, 25, 20, 1.0f, 10.0f};
+}
+
+Lightcone* makeEquippedLightcone(const string& lcName) {
+    Lightcone base = createLightcone(lcName);
+
+    int s = lightconeSuperimposition[lcName];
+    float multiplier = 1.0f + 0.01f * max(0, s - 1); // S1 = 1.0, S6 = 1.05
+
+    base.bonusHP         = static_cast<int>(base.bonusHP * multiplier);
+    base.bonusATK        = static_cast<int>(base.bonusATK * multiplier);
+    base.bonusDEF        = static_cast<int>(base.bonusDEF * multiplier);
+    base.bonusCritRate   = base.bonusCritRate * multiplier;
+    base.bonusCritDamage = base.bonusCritDamage * multiplier;
+
+    return new Lightcone(base);
+}
+
+void displayCharacterDetails(const Character& ch) {
+    cout << "\n== Detail Karakter ==\n";
+    cout << "Nama: " << ch.name << "\n";
+    cout << "HP: " << ch.getTotalHP() << ", ATK: " << ch.getTotalATK() << ", DEF: " << ch.getTotalDEF() << "\n";
+    cout << "Crit Rate: " << ch.getTotalCritRate() << "%, Crit Damage: " << ch.getTotalCritDamage() << "%\n";
+    cout << "Lightcone: " << (ch.equippedLightcone ? ch.equippedLightcone->name : "Tidak ada") << "\n";
+}
+
+void merge(vector<string>& arr, int l, int m, int r) {
+    int n1 = m - l + 1, n2 = r - m;
+    vector<string> L(arr.begin() + l, arr.begin() + m + 1);
+    vector<string> R(arr.begin() + m + 1, arr.begin() + r + 1);
+
+    int i = 0, j = 0, k = l;
+    while (i < n1 && j < n2) {
+        if (L[i] < R[j])
+            arr[k++] = L[i++];
+        else
+            arr[k++] = R[j++];
+    }
+    while (i < n1) arr[k++] = L[i++];
+    while (j < n2) arr[k++] = R[j++];
+}
+
+void mergeSort(vector<string>& arr, int l, int r) {
+    if (l < r) {
+        int m = (l + r) / 2;
+        mergeSort(arr, l, m);
+        mergeSort(arr, m + 1, r);
+        merge(arr, l, m, r);
+    }
+}
+
+int calculateDamage(int atk, int def, float critRate, float critDmg) {
+    float chance = (rand() % 10000) / 100.0f;
+    bool isCrit = chance < critRate;
+    float dmg = atk - def;
+    if (isCrit) dmg *= (1 + critDmg / 100.0f);
+    return max(0, static_cast<int>(dmg));
+}
+
+int calculateBuff(int atk, float critRate, float critDmg) {
+    float chance = (rand() % 10000) / 100.0f;
+    bool isCrit = chance < critRate;
+    float buff = atk * 0.5f;
+    if (isCrit) buff *= (1 + critDmg / 100.0f);
+    return static_cast<int>(buff);
+}
+
+int calculateDebuff(int atk, float critRate, float critDmg) {
+    float chance = (rand() % 10000) / 100.0f;
+    bool isCrit = chance < critRate;
+    float debuff = atk * 0.4f;
+    if (isCrit) debuff *= (1 + critDmg / 100.0f);
+    return static_cast<int>(debuff);
+}
+
+int calculateShield(int def, float critRate, float critDmg) {
+    float chance = (rand() % 10000) / 100.0f;
+    bool isCrit = chance < critRate;
+    float shield = def * 1.0f;
+    if (isCrit) shield *= (1 + critDmg / 100.0f);
+    return static_cast<int>(shield);
+}
+
+int calculateHeal(int hp, float critRate, float critDmg) {
+    float chance = (rand() % 10000) / 100.0f;
+    bool isCrit = chance < critRate;
+    float heal = hp * 0.3f;
+    if (isCrit) heal *= (1 + critDmg / 100.0f);
+    return static_cast<int>(heal);
+}
+
+
+struct Boss {
+    string name;
+    int HP, ATK, DEF;
+    float critRate, critDamage;
+    int turnCounter = 0;
+    int skillThreshold = 2;     // setiap 2 turn pakai skill
+    int ultimateThreshold = 5;  // setiap 5 turn pakai ultimate
+    int shield = 0;
+};
+
+
+map<string, bool> bossDefeated = {
+    {"Cocolia", false},
+    {"Feixiao", false},
+    {"Aventurine", false}
+};
+
+Boss createBoss(const string& name) {
+    if (name == "Cocolia") return {"Cocolia", 5000, 500, 200, 20.0f, 50.0f};
+    if (name == "Feixiao") return {"Feixiao", 10000, 750, 500, 30.0f, 60.0f};
+    if (name == "Aventurine") return {"Aventurine", 20000, 900, 300, 40.0f, 70.0f};
+    return {"Unknown Boss", 1000, 100, 100, 1.0f, 10.0f};
+}
+
+void basicAttack(Character& ch, Boss& boss, int& points) {
+    int dmg = calculateDamage(ch.getTotalATK(), boss.DEF, ch.getTotalCritRate(), ch.getTotalCritDamage());
+    boss.HP -= dmg;
+    points = min(points + 1, 5);
+    cout << ch.name << " melakukan basic attack! Boss kehilangan " << dmg << " HP. (Boss HP: " << boss.HP << ")\n";
+}
+
+void useSkill(Character& ch, Boss& boss, vector<Character>& team, int& points) {
+    if (points <= 0) {
+        cout << "Poin skill tidak cukup!\n";
+        return;
+    }
+    points--;
+    ch.skillCount++;
+
+    switch (ch.type) {
+        case DPS: {
+            int dmg = calculateDamage(ch.getTotalATK(), boss.DEF, ch.getTotalCritRate(), ch.getTotalCritDamage());
+            boss.HP -= dmg;
+            cout << ch.name << " menggunakan SKILL! Boss kehilangan " << dmg << " HP.\n";
+            cout << "Boss HP: " << boss.HP << "\n";
+            break;
+        }
+        case BUFFER: {
+            int buff = calculateBuff(ch.getTotalATK(), ch.getTotalCritRate(), ch.getTotalCritDamage());
+            for (auto& ally : team)
+                if (ally.currentHP > 0) ally.baseATK += buff;
+            int dmg = calculateDamage(ch.getTotalATK() * 0.8, boss.DEF, ch.getTotalCritRate(), ch.getTotalCritDamage());
+            boss.HP -= dmg;
+            cout << ch.name << " menggunakan SKILL! ATK tim bertambah " << buff << " dan Boss kehilangan " << dmg << " HP.\n";
+            cout << "Boss HP: " << boss.HP << "\n";
+            break;
+        }
+        case DEBUFFER: {
+            int defDown = calculateDebuff(ch.getTotalATK(), ch.getTotalCritRate(), ch.getTotalCritDamage());
+            boss.DEF = max(0, boss.DEF - defDown);
+            int dmg = calculateDamage(ch.getTotalATK() * 0.8, boss.DEF, ch.getTotalCritRate(), ch.getTotalCritDamage());
+            boss.HP -= dmg;
+            cout << ch.name << " menggunakan SKILL! Boss kehilangan " << dmg << " HP dan DEF berkurang " << defDown << "!\n";
+            cout << "Boss HP: " << boss.HP << "\n";
+            break;
+        }
+        case HEALER: {
+            bool healed = false;
+            for (auto& ally : team) {
+                if (ally.currentHP > 0 && ally.currentHP < ally.getTotalHP()) {
+                    int heal = calculateHeal(ch.getTotalHP(), ch.getTotalCritRate(), ch.getTotalCritDamage());
+                    ally.currentHP = min(ally.getTotalHP(), ally.currentHP + heal);
+                    cout << ch.name << " menggunakan SKILL! " << ally.name << " memulihkan " << heal << " HP!\n";
+                    healed = true;
+                    break;
+                }
+            }
+            if (!healed) cout << ch.name << " menggunakan SKILL tapi semua anggota sudah full HP.\n";
+            break;
+        }
+        case SHIELDER: {
+            bool shielded = false;
+            for (auto& ally : team) {
+                if (ally.currentHP > 0) {
+                    int shield = calculateShield(ch.getTotalDEF(), ch.getTotalCritRate(), ch.getTotalCritDamage());
+                    ally.shield += shield;
+                    cout << ch.name << " menggunakan SKILL! " << ally.name << " mendapatkan shield " << shield << " HP!\n";
+                    shielded = true;
+                    break;
+                }
+            }
+            if (!shielded) cout << ch.name << " menggunakan SKILL tapi tidak ada yang bisa diberi shield.\n";
+            break;
+        }
+    }
+}
+
+void useUltimate(Character& ch, Boss& boss, vector<Character>& team) {
+    if (ch.skillCount < 3) {
+        cout << "Ultimate belum siap! (Progress: " << ch.skillCount << "/3)\n";
+        return;
+    }
+
+    ch.skillCount = 0;
+
+    switch (ch.type) {
+        case DPS: {
+            int dmg = calculateDamage(ch.getTotalATK() * 2.5, boss.DEF, ch.getTotalCritRate(), ch.getTotalCritDamage());
+            boss.HP -= dmg;
+            cout << ch.name << " menggunakan ULTIMATE! Boss kehilangan " << dmg << " HP.\n";
+            cout << "Boss HP: " << boss.HP << "\n";
+            break;
+        }
+        case BUFFER: {
+            int buff = calculateBuff(ch.getTotalATK(), ch.getTotalCritRate(), ch.getTotalCritDamage());
+            for (auto& ally : team)
+                if (ally.currentHP > 0) {
+                    ally.baseATK += buff;
+                    ally.baseCritRate += 15.0f;
+                }
+            int dmg = calculateDamage(ch.getTotalATK(), boss.DEF, ch.getTotalCritRate(), ch.getTotalCritDamage());
+            boss.HP -= dmg;
+            cout << ch.name << " menggunakan ULTIMATE! Seluruh tim mendapat ATK+" << buff << ", Crit Rate+15%. Boss kehilangan " << dmg << " HP.\n";
+            cout << "Boss HP: " << boss.HP << "\n";
+            break;
+        }
+        case DEBUFFER: {
+            int defDown = calculateDebuff(ch.getTotalATK(), ch.getTotalCritRate(), ch.getTotalCritDamage());
+            boss.DEF = max(0, boss.DEF - defDown);
+            boss.critRate = max(0.0f, boss.critRate - 15.0f);
+            int dmg = calculateDamage(ch.getTotalATK(), boss.DEF, ch.getTotalCritRate(), ch.getTotalCritDamage());
+            boss.HP -= dmg;
+            cout << ch.name << " menggunakan ULTIMATE! Boss kehilangan " << dmg << " HP, DEF -" << defDown << ", dan Crit Rate -15%!\n";
+            cout << "Boss HP: " << boss.HP << "\n";
+            break;
+        }
+        case HEALER: {
+            int heal = calculateHeal(ch.getTotalHP(), ch.getTotalCritRate(), ch.getTotalCritDamage());
+            for (auto& ally : team)
+                if (ally.currentHP > 0)
+                    ally.currentHP = min(ally.getTotalHP(), ally.currentHP + heal);
+            cout << ch.name << " menggunakan ULTIMATE! Semua anggota tim memulihkan " << heal << " HP!\n";
+            break;
+        }
+        case SHIELDER: {
+            int shield = calculateShield(ch.getTotalDEF(), ch.getTotalCritRate(), ch.getTotalCritDamage());
+            for (auto& ally : team)
+                if (ally.currentHP > 0)
+                    ally.shield += shield;
+            cout << ch.name << " menggunakan ULTIMATE! Semua anggota tim mendapatkan shield " << shield << " HP!\n";
+            break;
+        }
+    }
+}
+
+void bossSkill(Boss& boss, vector<Character>& team) {
+    if (boss.name == "Cocolia") {
+        // Skill = serangan ke seluruh tim
+        cout << boss.name << " menggunakan SKILL: Serangan AOE!\n";
+        for (auto& target : team) {
+            if (target.currentHP <= 0) continue;
+            int dmg = calculateDamage(boss.ATK * 1.2, target.getTotalDEF(), boss.critRate, boss.critDamage);
+            if (target.shield > 0) {
+                int absorbed = min(dmg, target.shield);
+                target.shield -= absorbed;
+                dmg -= absorbed;
+                cout << target.name << " diserang, shield menyerap " << absorbed << "!\n";
+            }
+            target.currentHP -= dmg;
+            cout << target.name << " menerima " << dmg << " damage dari skill.\n";
+        }
+    } else if (boss.name == "Feixiao") {
+        // Skill = buff ATK
+        boss.ATK += 100;
+        cout << boss.name << " menggunakan SKILL: Meningkatkan ATK-nya sebesar 100!\n";
+    } else if (boss.name == "Aventurine") {
+        // Skill = shield untuk diri sendiri
+        boss.shield += 300;
+        cout << boss.name << " menggunakan SKILL: Memberikan shield 300 HP ke dirinya!\n";
+    }
+}
+
+void bossUltimate(Boss& boss, vector<Character>& team) {
+    if (boss.name == "Cocolia") {
+        cout << boss.name << " menggunakan ULTIMATE: Serangan Super AOE!\n";
+        for (auto& target : team) {
+            if (target.currentHP <= 0) continue;
+            int dmg = calculateDamage(boss.ATK * 1.8, target.getTotalDEF(), boss.critRate, boss.critDamage);
+            if (target.shield > 0) {
+                int absorbed = min(dmg, target.shield);
+                target.shield -= absorbed;
+                dmg -= absorbed;
+                cout << target.name << " diserang, shield menyerap " << absorbed << "!\n";
+            }
+            target.currentHP -= dmg;
+            cout << target.name << " menerima " << dmg << " damage dari ultimate!\n";
+        }
+    } else if (boss.name == "Feixiao") {
+        // Ultimate = serangan tunggal sakit
+        int idx = rand() % team.size();
+        Character& target = team[idx];
+        int dmg = calculateDamage(boss.ATK * 2.0, target.getTotalDEF(), boss.critRate, boss.critDamage);
+        target.currentHP -= dmg;
+        cout << boss.name << " menggunakan ULTIMATE! " << target.name << " terkena " << dmg << " damage berat!\n";
+    } else if (boss.name == "Aventurine") {
+        boss.HP += 500;
+        if (boss.HP > 10000) boss.HP = 10000;
+        cout << boss.name << " menggunakan ULTIMATE: Menyembuhkan diri 500 HP dan menyerang!\n";
+        for (auto& target : team) {
+            if (target.currentHP <= 0) continue;
+            int dmg = calculateDamage(boss.ATK * 1.5, target.getTotalDEF(), boss.critRate, boss.critDamage);
+            target.currentHP -= dmg;
+            cout << target.name << " terkena " << dmg << " damage dari Aventurine.\n";
+        }
+    }
+}
+
+void battle(vector<string>& teamNames) {
+    string currentBossName = "";
+    battleHistory.clear(); // Reset history setiap mulai battle
+    string bossName;
+    
+    while (true) {
+        cout << "\n== Pilih Bos ==\n";
+        int i = 1;
+        vector<string> bosses = {"Cocolia", "Feixiao", "Aventurine"};
+        for (const auto& name : bosses) {
+            cout << i++ << ". " << name;
+            if (bossDefeated[name]) cout << " [Defeated]";
+            cout << "\n";
+        }
+        cout << "0. Kembali ke menu\n";
+
+        int choice;
+        cout << "Pilih bos (0-" << bosses.size() << "): ";
+        cin >> choice;
+
+        if (choice == 0) return;
+        if (choice >= 1 && choice <= bosses.size()) {
+            bossName = bosses[choice - 1];
+            if (bossDefeated[bossName]) {
+                cout << "Kamu sudah mengalahkan " << bossName << ". Ingin bertarung lagi? (y/n): ";
+                char again;
+                cin >> again;
+                if (again == 'y' || again == 'Y') break;
+                else continue;
+            } else {
+                break;
+            }
+        } else {
+            cout << "Pilihan tidak valid.\n";
+        }
+    }
+
+    // Setup karakter
+    vector<Character> team;
+    for (const string& name : teamNames) {
+        string baseName = getBaseName(name);
+        Character ch = createCharacter(baseName);
+
+        int eidolonLevel = 0;
+        if (name.find("E") != string::npos) {
+            eidolonLevel = stoi(name.substr(name.find("E") + 1));
+        }
+
+        ch.type = getCharacterType(baseName);         
+        applyEidolonStatBoosts(ch, eidolonLevel);     
+
+        if (equippedLightcones.count(baseName)) {
+            ch.equippedLightcone = makeEquippedLightcone(equippedLightcones[baseName]);
+        }
+
+        ch.initHP();
+        ch.name = name;  
+        team.push_back(ch);
+    }
+
+
+    Boss boss = createBoss(bossName);
+    int actionPoints = 5;
+    int turn = 0;
+
+    while (boss.HP > 0 && any_of(team.begin(), team.end(), [](Character& c){ return c.currentHP > 0; })) {
+        cout << "\n==== Giliran ====\n";
+        for (int i = 0; i < team.size(); ++i)
+            if (team[i].currentHP > 0)
+                cout << i + 1 << ". " << team[i].name << "\n";
+        cout << "Boss: " << boss.name << " (HP: " << boss.HP << ")\n";
+        cout << "Poin Aksi: " << actionPoints << "\n";
+
+        Character& ch = team[turn % team.size()];
+        if (ch.currentHP <= 0) {
+            turn++;
+            continue;
+        }
+
+        cout << "\n" << ch.name << ":\n";
+        cout << "HP: " << ch.currentHP << "/" << ch.getTotalHP() << "\n";
+        cout << "1. Basic Attack\n2. Skill\n3. Ultimate (" << ch.skillCount << "/3)\n4. Lihat Riwayat Aksi (DFS)\n";
+        int input;
+        cout << "Pilih aksi: ";
+        cin >> input;
+
+        if (input == 4) {
+            battleHistory.showDFS();
+            system("pause");
+            continue;
+        }
+
+        switch (input) {
+            case 1: {
+                int hpBefore = boss.HP;
+                basicAttack(ch, boss, actionPoints);
+                int dmg = max(0, hpBefore - boss.HP);
+                string desc = ch.name + " melakukan Basic Attack ke " + boss.name + " (" + to_string(dmg) + " damage)";
+                battleHistory.addAction(ch.name, "BasicAttack", boss.name, dmg, turn, desc);
+                break;
+            }
+            case 2: {
+                int hpBefore = boss.HP;
+                useSkill(ch, boss, team, actionPoints);
+                int dmg = max(0, hpBefore - boss.HP);
+                string desc = ch.name + " menggunakan Skill ke " + boss.name + " (" + to_string(dmg) + " damage)";
+                battleHistory.addAction(ch.name, "Skill", boss.name, dmg, turn, desc);
+                break;
+            }
+            case 3: {
+                int hpBefore = boss.HP;
+                useUltimate(ch, boss, team);
+                int dmg = max(0, hpBefore - boss.HP);
+                string desc = ch.name + " mengeluarkan Ultimate ke " + boss.name + " (" + to_string(dmg) + " damage)";
+                battleHistory.addAction(ch.name, "Ultimate", boss.name, dmg, turn, desc);
+                break;
+            }
+            default: cout << "Pilihan tidak valid.\n"; continue;
+        }
+
+        // giliran boss
+        if ((turn + 1) % team.size() == 0 && boss.HP > 0) {
+            boss.turnCounter++;
+
+        // Ultimate > Skill > Basic Attack
+        if (boss.turnCounter % boss.ultimateThreshold == 0) {
+            bossUltimate(boss, team);
+        } else if (boss.turnCounter % boss.skillThreshold == 0) {
+            bossSkill(boss, team);
+        } else {
+            // Basic attack seperti biasa
+            vector<int> alive;
+            for (int i = 0; i < team.size(); ++i)
+                if (team[i].currentHP > 0)
+                    alive.push_back(i);
+
+            int targetIdx = alive[rand() % alive.size()];
+            Character& target = team[targetIdx];
+            int dmg = calculateDamage(boss.ATK, target.getTotalDEF(), boss.critRate, boss.critDamage);
+
+            if (boss.shield > 0) {
+                cout << boss.name << " punya shield " << boss.shield << ", tetapi tidak memengaruhi serangan!\n";
+            }
+
+            if (target.shield > 0) {
+                int absorbed = min(dmg, target.shield);
+                target.shield -= absorbed;
+                dmg -= absorbed;
+                cout << "\n" << boss.name << " menghantam " << target.name << " tapi shield menyerap " << absorbed << "!\n";
+            }
+
+            target.currentHP -= dmg;
+            cout << boss.name << " menyerang " << target.name << " dengan " << dmg << " damage.\n";
+            string desc = boss.name + " menyerang " + target.name + " (" + to_string(dmg) + " damage)";
+            battleHistory.addAction(boss.name, "BossAttack", target.name, dmg, turn, desc);
+        }
+    }
+
+        turn++;
+    }
+
+    if (boss.HP <= 0) {
+        cout << "\nBoss dikalahkan!\n";
+        bossDefeated[boss.name] = true;
+        currentBossName = boss.name;
+        allBattles.push_back(battleHistory);
+        bossNames.push_back(boss.name);
+    } else {
+        cout << "\nTim kamu kalah...\n";
+    }
+}
+
+// ... (sisa kode tetap sama)
+
+// ===== Battle Action History (DFS) =====
+struct BattleAction {
+    string actor;      // Nama karakter atau boss
+    string actionType; // "Attack", "Skill", "Ultimate", "BossAttack", dst
+    string target;     // Nama target
+    int value;         // Damage/heal/shield value
+    int turn;          // Turn ke berapa
+    string desc;       // Deskripsi aksi
+    BattleAction* prev; // Untuk DFS (reverse traversal)
+    BattleAction* next; // Untuk BFS (forward traversal)
+    BattleAction(const string& actor, const string& actionType, const string& target, int value, int turn, const string& desc)
+        : actor(actor), actionType(actionType), target(target), value(value), turn(turn), desc(desc), prev(nullptr), next(nullptr) {}
+};
+
+class BattleHistory {
+    BattleAction* head = nullptr; // First action
+    BattleAction* tail = nullptr; // Last action
+public:
+    void addAction(const string& actor, const string& actionType, const string& target, int value, int turn, const string& desc) {
+        BattleAction* node = new BattleAction(actor, actionType, target, value, turn, desc);
+        if (!head) {
+            head = tail = node;
+        } else {
+            tail->next = node;
+            node->prev = tail;
+            tail = node;
+        }
+    }
+    // DFS: tampilkan dari last ke first
+    void showDFS() const {
+        if (!tail) {
+            cout << "\n(Belum ada aksi dicatat)\n";
+            return;
+        }
+        cout << "\n=== Riwayat Aksi Pertarungan (DFS: terbaru ke terlama) ===\n";
+        const BattleAction* curr = tail;
+        int idx = 1;
+        while (curr) {
+            cout << idx++ << ". [Turn " << curr->turn << "] " << curr->desc << "\n";
+            curr = curr->prev;
+        }
+    }
+    // BFS: tampilkan dari first ke last
+    void showBFS() const {
+        if (!head) {
+            cout << "\n(Belum ada aksi dicatat)\n";
+            return;
+        }
+        cout << "\n=== Riwayat Aksi Pertarungan (BFS: awal ke akhir) ===\n";
+        const BattleAction* curr = head;
+        int idx = 1;
+        while (curr) {
+            cout << idx++ << ". [Turn " << curr->turn << "] " << curr->desc << "\n";
+            curr = curr->next;
+        }
+    }
+    // Visualisasi performa: grafik damage tiap aksi
+    void showPerformanceGraph() const {
+        if (!head) {
+            cout << "\n(Belum ada aksi dicatat)\n";
+            return;
+        }
+        cout << "\n=== Grafik Performa Pertarungan (Damage per Aksi) ===\n";
+        const BattleAction* curr = head;
+        int idx = 1;
+        while (curr) {
+            if (curr->value > 0 && (curr->actionType == "BasicAttack" || curr->actionType == "Skill" || curr->actionType == "Ultimate" || curr->actionType == "BossAttack")) {
+                cout << idx << ". [" << curr->actor << "] ";
+                int barLen = min(50, curr->value / 10); // 10 damage = 1 '#', max 50
+                for (int i = 0; i < barLen; ++i) cout << "#";
+                cout << " (" << curr->value << ")\n";
+            }
+            curr = curr->next;
+            idx++;
+        }
+    }
+    void clear() {
+        while (head) {
+            BattleAction* tmp = head;
+            head = head->next;
+            delete tmp;
+        }
+        tail = nullptr;
+    }
+    ~BattleHistory() { clear(); }
+};
+
+BattleHistory battleHistory;
+vector<BattleHistory> allBattles;
+vector<string> bossNames;
+
+// Circular Linked List
+struct CircleNode {
+    string character;
+    CircleNode* next;
+    CircleNode(string character) : character(character), next(nullptr) {}
+};
+
+class CharacterCycle {
+    CircleNode* head;
+public:
+    CharacterCycle(vector<string>& characters) {
+        head = new CircleNode(characters[0]);
+        CircleNode* temp = head;
+        for (int i = 1; i < characters.size(); i++) {
+            temp->next = new CircleNode(characters[i]);
+            temp = temp->next;
+        }
+        temp->next = head;
+    }
+
+    void display(int count) {
+        CircleNode* temp = head;
+        for (int i = 0; i < count; i++) {
+            cout << temp->character << " -> ";
+            temp = temp->next;
+        }
+        cout << "...\n";
+    }
+};
+
+string cleanName(const string& rawName) {
+    string name = rawName;
+
+    // 1) Potong tag " S<digit>" hanya jika ada di akhir string
+    regex superimposeRegex(R"(^(.*) S[1-5]$)");
+    smatch match;
+
+    if (regex_match(name, match, superimposeRegex)) {
+        name = match[1];
+    }
+
+    // 2) Potong "(Starglitter ...)"
+    size_t pos = name.find(" (Starglitter");
+    if (pos != string::npos) {
+        name = name.substr(0, pos);
+    }
+
+    // 3) Trim whitespace
+    name.erase(name.find_last_not_of(" \n\r\t") + 1);
+    return name;
+}
+
+bool isLightcone(const string& name) {
+    string cleaned = cleanName(name);
+
+    return find(lightcones.begin(), lightcones.end(), cleaned) != lightcones.end() ||
+           find(standardLightcones.begin(), standardLightcones.end(), cleaned) != standardLightcones.end() ||
+           find(threeStarLightcones.begin(), threeStarLightcones.end(), cleaned) != threeStarLightcones.end() ||
+           cleaned == rateUpLightcones; // Tambahan: Cek rate-up lightcone
+}
+// Gacha History Linked List
+struct GachaNode {
+    string character;
+    bool isLightcone;
+    GachaNode* next;
+
+    GachaNode(const string& rawName)
+        : character(rawName), isLightcone(::isLightcone(rawName)), next(nullptr) {}
+};
+
+
+class GachaHistory {
+    GachaNode* head;
+
+    void paginateDisplay(
+    const vector<string>& characterList,
+    const vector<string>& lightconeList,
+    bool showCharacter,
+    const string& title,
+    bool& backToMenu,
+    bool& toggleType
+    ) {
+    const vector<string>& items = showCharacter ? characterList : lightconeList;
+
+    if (items.empty()) {
+        cout << "\n(Tidak ada " << title << " yang ditarik.)\n";
+        backToMenu = true;
+        return;
+    }
+
+    int page = 0;
+    int pageSize = 10;
+    int totalPages = (items.size() + pageSize - 1) / pageSize;
+
+    while (true) {
+        system("cls"); // atau system("clear") jika Linux/Mac
+        cout << "\n--- " << title << " Pulls (Page " << page + 1 << " of " << totalPages << ") ---\n";
+        int start = page * pageSize;
+        int end = min(start + pageSize, (int)items.size());
+        for (int i = start; i < end; ++i) {
+            cout << i + 1 << ". " << items[i] << "\n";
+        }
+
+        cout << "\nNavigasi:\n";
+        cout << "[n] Next  [p] Previous  [f] First  [l] Last  [s] Search  [c] Change to " 
+             << (title == "Character" ? "Lightcone" : "Character") << "  [x] Exit to Menu\n";
+        cout << "Pilihan: ";
+        char cmd;
+        cin >> cmd;
+        cin.ignore();
+
+        if (cmd == 'n' && page < totalPages - 1) page++;
+        else if (cmd == 'p' && page > 0) page--;
+        else if (cmd == 'f') page = 0;
+        else if (cmd == 'l') page = totalPages - 1;
+        else if (cmd == 's') {
+            string target;
+            cout << "Masukkan nama karakter (case sensitive): ";
+            getline(cin, target);
+
+            const vector<string>& currentList = showCharacter ? characterList : lightconeList;
+            int jumlah = count(currentList.begin(), currentList.end(), target);
+
+            if (jumlah > 0)
+                cout << "\n" << target << " ditemukan sebanyak " << jumlah << " kali.\n";
+            else
+                cout << "\n" << target << " tidak ditemukan dalam histori.\n";
+
+            system("pause");
+        }
+        else if (cmd == 'x') { backToMenu = true; break; }
+        else if (cmd == 'c') { toggleType = true; break; }
+        else cout << "Pilihan tidak valid.\n";
+    }
+}
+
+
+public:
+    GachaHistory() : head(nullptr) {}
+
+    void addHistory(string name) {
+        GachaNode* newNode = new GachaNode(name);
+        if (!head) head = newNode;
+        else {
+            GachaNode* temp = head;
+            while (temp->next) temp = temp->next;
+            temp->next = newNode;
+        }
+    }
+
+    void viewHistory() {
+    if (!head) {
+        cout << "\n=== Gacha History ===\n";
+        cout << "Belum ada histori gacha.\n";
+        return;
+    }
+
+    vector<string> characterList, lightconeList;
+    GachaNode* temp = head;
+    while (temp) {
+        string name = temp->character;
+        if (temp->isLightcone) {
+            lightconeList.push_back(name);
+        } else {
+            characterList.push_back(name);
+        }
+        temp = temp->next;
+    }
+
+    bool showCharacter = true;
+        while (true) {
+            bool backToMenu = false;
+            bool toggleType = false;
+
+            if (showCharacter)
+                paginateDisplay(characterList, lightconeList, showCharacter, "Character", backToMenu, toggleType);
+            else
+                paginateDisplay(characterList, lightconeList, showCharacter, "Lightcone", backToMenu, toggleType);
+
+            if (backToMenu) break;
+            if (toggleType) showCharacter = !showCharacter;
+        }
+    }
+
+
+    ~GachaHistory() {
+        while (head) {
+            GachaNode* temp = head;
+            head = head->next;
+            delete temp;
+        }
+    }
+} history;
+
+
+
+// Stack
+struct StackNode {
+    string name;
+    StackNode* next;
+    StackNode(string n) : name(n), next(nullptr) {}
+};
+
+class RecentCharacterStack {
+    StackNode* top;
+    int size;
+    const int LIMIT = 10;
+
+public:
+    RecentCharacterStack() : top(nullptr), size(0) {}
+
+    void push(const string& name) {
+        if (size == LIMIT) {
+            StackNode* curr = top;
+            StackNode* prev = nullptr;
+            while (curr->next) {
+                prev = curr;
+                curr = curr->next;
+            }
+            delete curr;
+            if (prev) prev->next = nullptr;
+            else top = nullptr;
+            size--;
+        }
+        StackNode* node = new StackNode(name);
+        node->next = top;
+        top = node;
+        size++;
+    }
+
+    void display() const {
+        StackNode* curr = top;
+        vector<string> names;
+
+        cout << "\n== Recent Characters ===\n";
+        while (curr) {
+            cout << curr->name << "\n";
+            names.push_back(curr->name);
+            curr = curr->next;
+        }
+
+        // Lambda: cek apakah nama mengandung Eidolon (E<number>) di akhir
+        auto hasEidolon = [](const string& name) {
+            regex eidolonPattern(R"(.*\sE[1-6]$)");
+            return regex_match(name, eidolonPattern);
+        };
+
+        int count = count_if(names.begin(), names.end(), hasEidolon);
+        cout << "(Total karakter dengan Eidolon: " << count << ")\n";
+    }
+
+    ~RecentCharacterStack() {
+        while (top) {
+            StackNode* temp = top;
+            top = top->next;
+            delete temp;
+        }
+    }
+} recentCharacters;
+
+// Queue
+struct QueueNode {
+    string name;
+    QueueNode* next;
+    QueueNode(string n) : name(n), next(nullptr) {}
+};
+
+class CharacterQueue {
+    QueueNode* front;
+    QueueNode* rear;
+
+public:
+    CharacterQueue() : front(nullptr), rear(nullptr) {}
+
+    void enqueue(const string& name) {
+        QueueNode* node = new QueueNode(name);
+        if (!rear) {
+            front = rear = node;
+        } else {
+            rear->next = node;
+            rear = node;
+        }
+    }
+
+    void display() const {
+        QueueNode* curr = front;
+        cout << "Character Queue:\n";
+        while (curr) {
+            cout << curr->name << "\n";
+            curr = curr->next;
+        }
+    }
+
+    ~CharacterQueue() {
+        while (front) {
+            QueueNode* temp = front;
+            front = front->next;
+            delete temp;
+        }
+        rear = nullptr;
+    }
+} characterQueue;
+
+// Tree
+struct TreeNode {
+    string character;
+    TreeNode* left;
+    TreeNode* right;
+    TreeNode(string name) : character(name), left(nullptr), right(nullptr) {}
+};
+
+// Utility: Levenshtein Distance
+int levenshteinDistance(const std::string& s1, const std::string& s2) {
+    int m = s1.size(), n = s2.size();
+    std::vector<std::vector<int>> dp(m + 1, std::vector<int>(n + 1, 0));
+    for (int i = 0; i <= m; ++i) dp[i][0] = i;
+    for (int j = 0; j <= n; ++j) dp[0][j] = j;
+    for (int i = 1; i <= m; ++i) {
+        for (int j = 1; j <= n; ++j) {
+            if (tolower(s1[i - 1]) == tolower(s2[j - 1]))
+                dp[i][j] = dp[i - 1][j - 1];
+            else
+                dp[i][j] = 1 + std::min({dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]});
+        }
+    }
+    return dp[m][n];
+}
+
+class CharacterTree {
+    TreeNode* root;
+
+    TreeNode* insert(TreeNode* node, string name) {
+        if (!node) return new TreeNode(name);
+        if (name < node->character) node->left = insert(node->left, name);
+        else node->right = insert(node->right, name);
+        return node;
+    }
+
+    void inorder(TreeNode* node) {
+        if (!node) return;
+        inorder(node->left);
+        cout << node->character << " ";
+        inorder(node->right);
+    }
+
+    void inorderLabeled(TreeNode* node) {
+        if (!node) return;
+        inorderLabeled(node->left);
+        cout << "[Entry: " << node->character << "]\n";
+        inorderLabeled(node->right);
+    }
+
+    void collectByAlphabet(TreeNode* node, map<char, vector<string>>& groups) {
+        if (!node) return;
+        collectByAlphabet(node->left, groups);
+        char initial = toupper(node->character[0]);
+        groups[initial].push_back(node->character);
+        collectByAlphabet(node->right, groups);
+    }
+
+    void searchInTree(TreeNode* node, const string& keyword, vector<string>& result, bool fuzzy = false, int maxDistance = 2) {
+        if (!node) return;
+        searchInTree(node->left, keyword, result, fuzzy, maxDistance);
+        string lowerChar = toLower(node->character);
+        if (!fuzzy) {
+            if (lowerChar.find(keyword) != string::npos)
+                result.push_back(node->character);
+        } else {
+            // Fuzzy: gunakan Levenshtein Distance
+            if (levenshteinDistance(lowerChar, keyword) <= maxDistance)
+                result.push_back(node->character);
+        }
+        searchInTree(node->right, keyword, result, fuzzy, maxDistance);
+    }
+
+    string toLower(string str) {
+        for (char& c : str) c = tolower(c);
+        return str;
+    }
+
+public:
+    CharacterTree() : root(nullptr) {}
+    void addCharacter(string name) {
+        root = insert(root, name);
+    }
+    void viewInorder() {
+        cout << "\n=== Character Tree ===\n";
+        cout << "Diurutkan Berdasarkan Abjad:\n";
+        if (!root) {
+            cout << "Tree kosong.\n";
+            return;
+        }
+        inorder(root);
+        cout << endl;
+    }
+    void viewWithLabel() {
+        cout << "\n=== Character Tree (Dengan Label) ===\n";
+        if (!root) {
+            cout << "Tree kosong.\n";
+            return;
+        }
+        inorderLabeled(root);
+        cout << endl;
+    }
+    void viewGroupedByAlphabet() {
+        cout << "\n=== Tree Diurut Berdasarkan Awalan Huruf ===\n";
+        map<char, vector<string>> groups;
+        collectByAlphabet(root, groups);
+
+        for (char c = 'A'; c <= 'Z'; ++c) {
+            if (groups.count(c)) {
+                vector<string>& vec = groups[c];
+                if (!vec.empty()) mergeSort(vec, 0, vec.size() - 1);  
+
+                cout << "[" << c << "]\n";
+                for (const string& name : vec)
+                    cout << " - " << name << "\n";
+            }
+        }
+    }
+    void searchSubstring(string keyword, bool fuzzy = false, int maxDistance = 2) {
+        keyword = toLower(keyword);
+        vector<string> found;
+        clock_t start = clock();
+        searchInTree(root, keyword, found, fuzzy, maxDistance);
+        clock_t end = clock();
+        double elapsed = double(end - start) / CLOCKS_PER_SEC;
+        if (found.empty()) {
+            cout << "Tidak ditemukan hasil pencarian untuk \"" << keyword << "\"\n";
+        } else {
+            cout << "Hasil pencarian untuk \"" << keyword << "\" (" << found.size() << " hasil, " << elapsed << " detik):\n";
+            for (const auto& item : found) {
+                cout << "- " << item << "\n";
+            }
+        }
+    }
+};
+
+CharacterTree characterTree;
+
+// Library (fixed)
+struct CharacterLibrary {
+    vector<string> characters;
+    vector<string> lightcones;
+
+    CharacterLibrary() {
+        vector<string> fiveStarCharacters = {
+            "Bronya", "Clara", "Gepard", "Himeko", "Seele", "Yanqing",
+            "Bailu", "Welt", "Fu Xuan", "Sparkle", "Silver Wolf",
+            "Black Swan", "Luocha"
+        };
+
+        vector<string> fourStarCharacters = {
+            "Arlan", "Asta", "Dan Heng", "Hook", "March 7th", "Natasha",
+            "Pela", "Sampo", "Serval", "Tingyun"
+        };
+
+        characters.insert(characters.end(), fiveStarCharacters.begin(), fiveStarCharacters.end());
+        characters.insert(characters.end(), fourStarCharacters.begin(), fourStarCharacters.end());
+        characters.push_back("Castorice");
+
+        vector<string> lc5 = {
+            "Before Dawn", "Night on the Milky Way",
+            "Make Farewell More Beautiful", "Incessant Rain", "Earthly Escapade",
+            "She Already Shut Her Eyes", "Reforged Remembrance", "Echoes of the Coffin"
+        };
+
+        vector<string> lcStd = {
+            "Sleep Like the Dead", "The Battle Isn't Over", "Moment of Victory"
+        };
+
+        vector<string> lc3 = {
+            "Darting Arrow", "Meshing Cogs", "Chorus", "So Adversarial", "Passkey",
+            "Loop", "Multiplication", "Collapsing Sky", "Shattered Home", "Void"
+        };
+
+        lightcones.insert(lightcones.end(), lc5.begin(), lc5.end());
+        lightcones.insert(lightcones.end(), lcStd.begin(), lcStd.end());
+        lightcones.insert(lightcones.end(), lc3.begin(), lc3.end());
+    }
+
+    void loadToTree(CharacterTree& tree) {
+        for (const auto& ch : characters) tree.addCharacter(ch);
+        for (const auto& lc : lightcones) tree.addCharacter(lc);
+    }
+};
+
+// Gacha
+pair<string, string> performBannerGacha(int& pity5, int& pity4, BannerType banner) {
+    int roll = rand() % 100 + 1;
+    pity5++;
+    pity4++;
+
+    // 5★ pity / roll
+    if (pity5 >= 90 || roll <= 1) {
+        pity5 = 0;
+        string result;
+
+        if (banner == RATE_UP) {
+            bool win5050 = rand() % 2 == 0;
+            result = win5050 ? rateUpCharacter
+                             : fiveStarCharacters[rand() % fiveStarCharacters.size()];
+        }
+        else if (banner == STANDARD) {
+            result = fiveStarCharacters[rand() % fiveStarCharacters.size()];
+        }
+        else { // LIGHTCONE banner
+            bool winRateUp;
+            if (guaranteedLightconeNext) {
+                winRateUp = true;
+            } else {
+                winRateUp = (rand() % 2 == 0);
+            }
+
+            if (winRateUp) {
+                result = rateUpLightcones;
+                guaranteedLightconeNext = false;
+            } else {
+                result = standardLightcones[rand() % standardLightcones.size()];
+                guaranteedLightconeNext = true;
+            }
+        }
+
+        // now apply superimposition / starglitter logic...
+        if (isLightcone(result)) {
+            if (++lightconeSuperimposition[result] > 6) {
+                lightconeSuperimposition[result]--;
+                starglitter += 15;
+                result += " (Starglitter +15)";
+            } else if (lightconeSuperimposition[result] > 1) {
+                result += " S" + to_string(lightconeSuperimposition[result]);
+            }
+        } else {
+            // character logic unchanged
+            if (++ownedCharacters[result] > 6) {
+                ownedCharacters[result]--;
+                starglitter += 40;
+                result += " (Starglitter +40)";
+            } else if (ownedCharacters[result] > 1) {
+                result += " E" + to_string(ownedCharacters[result] - 1);
+            }
+        }
+
+        return {result, "5-star"};
+    }
+    
+    if (pity4 >= 10 || roll <= 10) {
+        pity4 = 0;
+        string result = fourStarCharacters[rand() % fourStarCharacters.size()];
+        if (isLightcone(result)) {
+            if (++lightconeSuperimposition[result] > 5) {
+                lightconeSuperimposition[result]--;
+                starglitter += 15;
+                result += " (Starglitter +15)";
+            } else if (lightconeSuperimposition[result] > 1) {
+                result += " S" + to_string(lightconeSuperimposition[result]);
+            }
+        } else {
+            if (++ownedCharacters[result] > 6) {
+                ownedCharacters[result]--;
+                starglitter += 40;
+                result += " (Starglitter +40)";
+            } else if (ownedCharacters[result] > 1) {
+                result += " E" + to_string(ownedCharacters[result] - 1);
+            }
+        }
+        
+        return {result, "4-star"};
+    }
+
+    string result = threeStarLightcones[rand() % threeStarLightcones.size()];
+    if (++lightconeSuperimposition[result] > 5) {
+        lightconeSuperimposition[result]--;
+        starglitter += 15;
+        result += " (Starglitter +15)";
+    } else if (lightconeSuperimposition[result] > 1) {
+        result += " S" + to_string(lightconeSuperimposition[result]);
+    }
+    return {result, "3-star"};
+    
+}
+
+void selectBanner() {
+    cout << "\n== Pilih Banner ==\n";
+    cout << "1. Rate-Up Banner (Castorice)\n";
+    cout << "2. Standard Banner\n";
+    cout << "3. Rate-Up Lightcone Banner (Castorice)\n";
+    int choice;
+    cin >> choice;
+    switch (choice) {
+        case 1: currentBanner = RATE_UP; break;
+        case 2: currentBanner = STANDARD; break;
+        case 3: currentBanner = LIGHTCONE; break;
+        default: cout << "Pilihan tidak valid.\n";
+    }
+}
+
+void manageTeam() {
+    cout << "\n== Team Builder ==\n";
+    if (ownedCharacters.empty()) {
+        cout << "Kamu belum punya karakter.\n";
+        return;
+    }
+
+    unordered_map<string, int> uniqueCharacters;
+    for (auto& [name, copies] : ownedCharacters) {
+        if (!uniqueCharacters.count(name) || copies > uniqueCharacters[name])
+            uniqueCharacters[name] = copies;
+    }
+
+    vector<pair<string, int>> sortedCharacters(uniqueCharacters.begin(), uniqueCharacters.end());
+
+    sort(sortedCharacters.begin(), sortedCharacters.end(),
+        [](const pair<string, int>& a, const pair<string, int>& b) {
+            return a.first < b.first;
+        });
+
+    vector<string> list;
+    int i = 1;
+    for (auto& [name, copies] : sortedCharacters) {
+        int eidLevel = max(0, copies - 1);
+        string fullName = eidLevel > 0
+            ? name + " E" + (eidLevel > 6 ? "6" : to_string(eidLevel))
+            : name;
+        list.push_back(fullName);
+        cout << i++ << ". " << fullName << endl;
+    }
+
+    cout << "\nMasukkan nomor karakter untuk tim (maksimal 4, pisah dengan spasi): ";
+    team.clear();
+    int pick;
+    for (int j = 0; j < 4 && cin >> pick; ++j) {
+        if (pick >= 1 && pick <= list.size())
+            team.push_back(list[pick - 1]);
+        else
+            cout << "Nomor tidak valid.\n";
+    }
+    cin.clear(); cin.ignore(10000, '\n');
+}
+
+
+void displayTeam() {
+    if (team.empty()) {
+        cout << "\n== Tim Saat Ini ==\nBelum ada tim.\n";
+        return;
+    }
+
+    cout << "\n== Tim Saat Ini ==\n";
+    for (int i = 0; i < team.size(); ++i) {
+        cout << i + 1 << ". " << team[i];
+        if (equippedLightcones.count(team[i])) {
+            cout << " (Lightcone: " << equippedLightcones[team[i]] << ")";
+        }
+        cout << "\n";
+    }
+
+    while (true) {
+        cout << "\n1. Lihat detail karakter\n2. Kembali ke menu\n";
+        int opsi;
+        cin >> opsi;
+        if (opsi == 2) break;
+        if (opsi == 1) {
+            cout << "\nLihat detail siapa? 1-" << team.size() << "\n";
+            int idx;
+            cin >> idx;
+            if (idx < 1 || idx > team.size()) {
+                cout << "Pilihan tidak valid.\n";
+                continue;
+            }
+
+            // Ambil nama penuh dan baseName-nya
+            string nama = team[idx - 1];
+            string baseName = getBaseName(nama);
+
+            // Buat karakter
+            Character ch = createCharacter(baseName);
+            ch.name = nama;
+
+            int eidolonLevel = getEidolonLevel(nama);
+            ch.type = getCharacterType(baseName);
+            applyEidolonStatBoosts(ch, eidolonLevel);
+
+            // Pasang Lightcone jika ada
+            if (equippedLightcones.count(nama)) {
+                Lightcone* eq = makeEquippedLightcone(equippedLightcones[nama]);
+                ch.equippedLightcone = eq;
+            }
+
+            // Tampilkan detail dengan semua boost
+            displayCharacterDetails(ch);
+
+            // Opsi ganti / hapus lightcone
+            cout << "\n1. Ganti/tambahkan lightcone\n2. Unequip lightcone\n3. Kembali\n";
+            int pilihan;
+            cin >> pilihan;
+            if (pilihan == 1) {
+            cout << "\n== Daftar Lightcone ==\n";
+                int num = 1;
+                vector<string> allLightcones;
+
+            // Tambahkan rate-up lightcone di depan
+            allLightcones.push_back(rateUpLightcones);
+
+            // Lalu masukkan list lightcones lainnya
+            allLightcones.insert(allLightcones.end(), lightcones.begin(), lightcones.end());
+            allLightcones.insert(allLightcones.end(), standardLightcones.begin(), standardLightcones.end());
+            allLightcones.insert(allLightcones.end(), threeStarLightcones.begin(), threeStarLightcones.end());
+
+            // Tampilkan dengan superimposition level
+            for (auto& lc : allLightcones) {
+                string lcDisplay = lc;
+                int sup = lightconeSuperimposition[lc];
+                if (sup > 1) lcDisplay += " S" + to_string(sup);
+                cout << num++ << ". " << lcDisplay << "\n";
+            }
+
+            cout << "\nPilih lightcone untuk ditambahkan: ";
+            int lcChoice;
+            cin >> lcChoice;
+            if (lcChoice >= 1 && lcChoice <= allLightcones.size()) {
+                equippedLightcones[nama] = allLightcones[lcChoice - 1];
+                cout << "Lightcone berhasil dipasang!\n";
+            } else {
+                cout << "Pilihan tidak valid.\n";
+            }
+            }
+            else if (pilihan == 2) {
+                equippedLightcones.erase(nama);
+                cout << "Lightcone telah dihapus.\n";
+            }
+
+            delete ch.equippedLightcone;
+        }
+    }
+}
+
+
+
+void displayStarglitter() {
+    cout << "\nStarglitter: " << starglitter << "\n";
+}
+
+void saveGame() {
+    ofstream out("save_data.txt");
+    out << starglitter << "\n";
+    out << team.size() << "\n";
+    for (string& t : team) out << t << "\n";
+    out << ownedCharacters.size() << "\n";
+    for (auto& [name, eid] : ownedCharacters) out << name << " " << eid << "\n";
+    out << equippedLightcones.size() << "\n";
+    for (auto& [nama, lc] : equippedLightcones)
+    out << nama << "|" << lc << "\n";
+    // Simpan superimposition lightcone
+    out << lightconeSuperimposition.size() << "\n";
+    for (auto& [lcName, Slevel] : lightconeSuperimposition) {
+    out << lcName << " " << Slevel << "\n";
+    }
+    // Simpan seluruh riwayat battle
+    out << allBattles.size() << "\n";
+    for (size_t i = 0; i < allBattles.size(); ++i) {
+        out << bossNames[i] << "\n";
+        // Hitung jumlah aksi
+        int nAksi = 0;
+        for (BattleAction* act = allBattles[i].head; act; act = act->next) ++nAksi;
+        out << nAksi << "\n";
+        for (BattleAction* act = allBattles[i].head; act; act = act->next) {
+            out << act->actor << "|" << act->actionType << "|" << act->target << "|" << act->value << "|" << act->turn << "|" << act->desc << "\n";
+        }
+    }
+    out.close();
+    cout << "Game berhasil disimpan.\n";
+}
+
+void loadGame() {
+    ifstream in("save_data.txt");
+    if (!in) {
+        cout << "Tidak ada file save.\n";
+        return;
+    }
+
+    // 1) Clear all existing state
+    ownedCharacters.clear();
+    team.clear();
+    equippedLightcones.clear();
+    lightconeSuperimposition.clear();
+
+    // 2) Read starglitter & team
+    in >> starglitter;
+    int teamSize; 
+    in >> teamSize; 
+    in.ignore(numeric_limits<streamsize>::max(), '\n');
+    for (int i = 0; i < teamSize; ++i) {
+        string line;
+        getline(in, line);
+        team.push_back(line);
+    }
+
+    // 3) Read ownedCharacters
+    int count;
+    in >> count;
+    in.ignore(numeric_limits<streamsize>::max(), '\n'); // Untuk buang newline sisa
+    for (int i = 0; i < count; ++i) {
+        string line;
+        getline(in, line);
+        size_t pos = line.find_last_of(' ');
+        if (pos != string::npos) {
+            string fullName = line.substr(0, pos);
+            int eid = stoi(line.substr(pos + 1));
+            ownedCharacters[fullName] = eid;
+        }
+    }
+
+    // 4) Read equipped lightcones
+    int eqCount;
+    in >> eqCount;
+    in.ignore(numeric_limits<streamsize>::max(), '\n');
+    for (int i = 0; i < eqCount; ++i) {
+        string line;
+        getline(in, line);
+        size_t split = line.find('|');
+        if (split != string::npos) {
+            string nama = line.substr(0, split);
+            string lc   = line.substr(split + 1);
+            equippedLightcones[nama] = lc;
+        }
+    }
+
+    // 5) Read superimposition levels (using getline + last-space split)
+    int lcSCount;
+    in >> lcSCount;
+    in.ignore(numeric_limits<streamsize>::max(), '\n');
+    for (int i = 0; i < lcSCount; ++i) {
+        string line;
+        getline(in, line);
+        // find last space to split off the numeric level
+        size_t pos = line.find_last_of(' ');
+        if (pos != string::npos) {
+            string lcName = line.substr(0, pos);
+            int level     = stoi(line.substr(pos + 1));
+            lightconeSuperimposition[lcName] = level;
+        }
+    }
+
+    // Load seluruh riwayat battle
+    allBattles.clear();
+    bossNames.clear();
+    int nBattle = 0;
+    if (in >> nBattle) {
+        in.ignore(numeric_limits<streamsize>::max(), '\n');
+        for (int i = 0; i < nBattle; ++i) {
+            string boss;
+            getline(in, boss);
+            bossNames.push_back(boss);
+            int nAksi = 0;
+            in >> nAksi;
+            in.ignore(numeric_limits<streamsize>::max(), '\n');
+            BattleHistory bh;
+            for (int j = 0; j < nAksi; ++j) {
+                string line;
+                getline(in, line);
+                size_t p1 = line.find('|');
+                size_t p2 = line.find('|', p1 + 1);
+                size_t p3 = line.find('|', p2 + 1);
+                size_t p4 = line.find('|', p3 + 1);
+                size_t p5 = line.find('|', p4 + 1);
+                if (p1 == string::npos || p2 == string::npos || p3 == string::npos || p4 == string::npos || p5 == string::npos) continue;
+                string actor = line.substr(0, p1);
+                string actionType = line.substr(p1 + 1, p2 - p1 - 1);
+                string target = line.substr(p2 + 1, p3 - p2 - 1);
+                int value = stoi(line.substr(p3 + 1, p4 - p3 - 1));
+                int turn = stoi(line.substr(p4 + 1, p5 - p4 - 1));
+                string desc = line.substr(p5 + 1);
+                bh.addAction(actor, actionType, target, value, turn, desc);
+            }
+            allBattles.push_back(bh);
+        }
+    }
+    in.close();
+    cout << "Game berhasil dimuat.\n";
+}
+
+void shop() {
+    int shopMenuChoice;
+
+    do {
+        system("cls"); // atau clear
+        cout << "====== SHOP MENU ======\n";
+        cout << "Starglitter Anda: " << starglitter << "\n";
+        cout << "1. Beli Karakter (5000 Starglitter)\n";
+        cout << "2. Beli Lightcone (5000 Starglitter)\n";
+        cout << "3. Kembali ke Main Menu\n";
+        cout << "Pilihan: ";
+        cin >> shopMenuChoice;
+
+        if (shopMenuChoice == 1 || shopMenuChoice == 2) {
+            vector<string>& shopList = (shopMenuChoice == 1) ? shopCharacters : shopLightcones;
+
+            while (true) {
+                system("cls");
+                cout << (shopMenuChoice == 1 ? "== Karakter Tersedia ==" : "== Lightcone Tersedia ==") << "\n";
+                for (int i = 0; i < shopList.size(); ++i) {
+                    cout << i + 1 << ". " << shopList[i];
+                    if ((shopMenuChoice == 1 && ownedCharacters.count(shopList[i])) ||
+                        (shopMenuChoice == 2 && lightconeSuperimposition.count(shopList[i])))
+                        cout << " [Sudah dimiliki]";
+                    cout << "\n";
+                }
+                cout << "0. Kembali ke Shop Menu\n";
+                cout << "Pilihan: ";
+                int beli;
+                cin >> beli;
+
+                if (beli == 0) break;
+                if (beli < 1 || beli > shopList.size()) {
+                    cout << "Pilihan tidak valid.\n";
+                    system("pause");
+                    continue;
+                }
+
+                string selected = shopList[beli - 1];
+
+                if ((shopMenuChoice == 1 && ownedCharacters.count(selected)) ||
+                    (shopMenuChoice == 2 && lightconeSuperimposition.count(selected))) {
+                    cout << "Item sudah dimiliki!\n";
+                    system("pause");
+                    continue;
+                }
+
+                if (starglitter < 5000) {
+                    cout << "Starglitter tidak cukup!\n";
+                    system("pause");
+                    continue;
+                }
+
+                starglitter -= 5000;
+                if (shopMenuChoice == 1) {
+                    ownedCharacters[selected] = 1;
+                    characterTree.addCharacter(selected);
+                    cout << "Berhasil membeli karakter: " << selected << "!\n";
+                } else {
+                    lightconeSuperimposition[selected] = 1;
+                    cout << "Berhasil membeli lightcone: " << selected << "!\n";
+                }
+
+                system("pause");
+            }
+        }
+    } while (shopMenuChoice != 3);
+}
+
+
+// Overloaded functions for displaying character info
+void displayCharacterInfo(const Character& ch) {
+    cout << "Nama: " << ch.name << "\n";
+    cout << "HP: " << ch.getTotalHP() << ", ATK: " << ch.getTotalATK() << ", DEF: " << ch.getTotalDEF() << "\n";
+    cout << "Crit Rate: " << ch.getTotalCritRate() << "%, Crit Damage: " << ch.getTotalCritDamage() << "%\n";
+    cout << "Lightcone: tidak ada\n";
+}
+
+void displayCharacterInfo(const Character& ch, const Lightcone* lc) {
+    cout << "Nama: " << ch.name << "\n";
+    cout << "HP: " << ch.getTotalHP() << ", ATK: " << ch.getTotalATK() << ", DEF: " << ch.getTotalDEF() << "\n";
+    cout << "Crit Rate: " << ch.getTotalCritRate() << "%, Crit Damage: " << ch.getTotalCritDamage() << "%\n";
+    if (lc) {
+        cout << "Lightcone: " << lc->name;
+        int s = lightconeSuperimposition[lc->name];
+        if (s > 1) cout << " S" << s;
+        cout << "\n";
+    } else {
+        cout << "Lightcone: tidak ada\n";
+    }
+}
+
+template<typename T>
+void displayList(const vector<T>& list, const string& title) {
+    cout << "\n== " << title << " ==\n";
+    for (size_t i = 0; i < list.size(); ++i) {
+        cout << i + 1 << ". " << list[i] << "\n";
+    }
+
+    // Tambahan lambda expression sederhana
+    auto panjangLebihDari10 = [](const T& item) {
+        return item.length() > 10;
+    };
+    int count = count_if(list.begin(), list.end(), panjangLebihDari10);
+    cout << "(Total item dengan nama > 10 karakter: " << count << ")\n";
+}
+
+
+void playGachaSound() {
+    PlaySound(TEXT("../Assets/Audio/Gacha.wav"), NULL, SND_FILENAME | SND_ASYNC);
+}
+
+void playCastoriceVideo() {
+    system("start \"\" \"../Assets/Animation/Castorice.mp4\"");
+}
+
+void showBattleHistoryAndPerformance() {
+    cout << "\n==============================\n";
+    cout << "     Battle History & Performance\n";
+    cout << "==============================\n";
+    if (allBattles.empty()) {
+        cout << "\nBelum ada riwayat pertarungan yang tersimpan.\n";
+        system("pause");
+        return;
+    }
+    cout << "\nList Riwayat Pertarungan:\n";
+    for (size_t i = 0; i < allBattles.size(); ++i) {
+        cout << i+1 << ". [Boss: " << bossNames[i] << "]\n";
+    }
+    cout << "\nMasukkan ID riwayat battle yang ingin dilihat (1-" << allBattles.size() << ", 0 untuk batal): ";
+    int id;
+    cin >> id;
+    if (id < 1 || id > (int)allBattles.size()) return;
+    cout << "\n=== Detail Pertarungan vs " << bossNames[id-1] << " ===\n";
+    allBattles[id-1].showBFS();
+    allBattles[id-1].showPerformanceGraph();
+    cout << "\nTampilkan DFS juga? (y/n): ";
+    char yn; cin >> yn;
+    if (yn == 'y' || yn == 'Y') allBattles[id-1].showDFS();
+    cout << "\n";
+    system("pause");
+}
+
+int main() {
+    srand(static_cast<unsigned int>(time(0)));
+    CharacterCycle cycle(fiveStarCharacters);
+    cout << "\nDaftar Karakter Bintang 5 Standar Yang Tersedia:\n";
+    cycle.display(10);
+    cout << "\nKarakter Bintang 5 Yang Sedang Rate On: Castorice\n";
+
+    int choice;
+    do {
+        cout << "\n=== Honkai: Star Rail Gacha Simulator ===\n";
+        cout << "1. Perform Gacha\n2. View Gacha History\n3. Library\n4. Save Game\n5. Load Game\n6. Build Team\n7. View Team\n8. Battle Mode\n9. Shop\n10. Exit\n11. Battle History & Performance\n";
+        cout << "Enter your choice: ";
+        cin >> choice;
+
+        switch (choice) {
+            case 1: {
+                selectBanner();
+                int subChoice;
+                do {
+                    cout << "\n== Gacha Menu ==\n";
+                    cout << "1. Pull 1x\n2. Pull 10x\n3. Kembali ke Menu Utama\n";
+                    cout << "Pilihan Anda: ";
+                    cin >> subChoice;
+                    cout << "\n";
+            
+                    switch (subChoice) {
+                        case 1: {
+                            pair<string, string> result;
+                            if (currentBanner == RATE_UP)
+                                result = performBannerGacha(pityCounter5RateUp, pityCounter4RateUp, RATE_UP);
+                            else if (currentBanner == STANDARD)
+                                result = performBannerGacha(pityCounter5Standard, pityCounter4Standard, STANDARD);
+                            else
+                                result = performBannerGacha(pityCounter5Lightcone, pityCounter4Lightcone, LIGHTCONE);
+                        
+                            playGachaSound();
+                        
+                            string baseName = cleanName(result.first);
+                            bool lightcone = isLightcone(baseName);
+                            int S = lightcone ? lightconeSuperimposition[baseName] : 0;
+                            string historyName = lightcone
+                                ? (S > 1 ? baseName + " S" + to_string(S) : baseName)
+                                : result.first;
+                        
+                            cout << "You got: " << result.first << " (" << result.second << ")\n";
+                            history.addHistory(historyName);
+                        
+                            if (!lightcone) {
+                                recentCharacters.push(historyName);
+                                characterQueue.enqueue(historyName);
+                                characterTree.addCharacter(historyName);
+                        
+                                if (baseName == "Castorice") {
+                                    playCastoriceVideo();
+                                }
+                            }
+                        
+                            displayStarglitter();
+                            break;
+                        }
+                        
+                        case 2: {
+                            vector<string> hasilGacha;
+                            vector<string> baseNames;
+                            bool castoriceFoundAfterFirst = false;
+                        
+                            for (int i = 0; i < 10; ++i) {
+                                pair<string, string> result;
+                                if (currentBanner == RATE_UP)
+                                    result = performBannerGacha(pityCounter5RateUp, pityCounter4RateUp, RATE_UP);
+                                else if (currentBanner == STANDARD)
+                                    result = performBannerGacha(pityCounter5Standard, pityCounter4Standard, STANDARD);
+                                else
+                                    result = performBannerGacha(pityCounter5Lightcone, pityCounter4Lightcone, LIGHTCONE);
+                        
+                                string baseName = cleanName(result.first);
+                                bool lightcone = isLightcone(baseName);
+                                int S = lightcone ? lightconeSuperimposition[baseName] : 0;
+                                string historyName = lightcone
+                                    ? (S > 1 ? baseName + " S" + to_string(S) : baseName)
+                                    : result.first;
+                        
+                                hasilGacha.push_back("Pull " + to_string(i + 1) + ": " + result.first + " (" + result.second + ")");
+                                baseNames.push_back(baseName);
+                                history.addHistory(historyName);
+                        
+                                if (!lightcone) {
+                                    recentCharacters.push(historyName);
+                                    characterQueue.enqueue(historyName);
+                                    characterTree.addCharacter(historyName);
+                                }
+                            }
+                        
+                            cout << "\nMenampilkan hasil gacha satu per satu...\n";
+                        
+                            for (int i = 0; i < hasilGacha.size(); ++i) {
+                                playGachaSound();
+                                cout << hasilGacha[i] << "\n";
+                        
+                                if (baseNames[i] == "Castorice") {
+                                    playCastoriceVideo();
+                                }
+                        
+                                if (i < hasilGacha.size() - 1) {
+                                    cout << "Tekan [n] untuk next, [s] untuk skip semua: ";
+                                    char cmd;
+                                    cin >> cmd;
+                                    if (cmd == 's' || cmd == 'S') {
+                                        playGachaSound();
+                        
+                                        // Cek apakah masih ada Castorice di sisa pull
+                                        for (int j = i + 1; j < baseNames.size(); ++j) {
+                                            if (baseNames[j] == "Castorice") {
+                                                castoriceFoundAfterFirst = true;
+                                                break;
+                                            }
+                                        }
+                        
+                                        if (castoriceFoundAfterFirst) {
+                                            playCastoriceVideo(); // hanya sekali saat skip
+                                        }
+                        
+                                        for (int j = i + 1; j < hasilGacha.size(); ++j) {
+                                            cout << hasilGacha[j] << "\n";
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        
+                            displayStarglitter();
+                            break;
+                        } 
+                            
+                        case 3:
+                            cout << "Kembali ke menu utama...\n";
+                            break;
+                        default:
+                            cout << "Pilihan tidak valid.\n";
+                    }
+                
+                } while (subChoice != 3);
+                break;
+            }
+            
+            case 2: {
+                int hChoice;
+                do {
+                    cout << "\n== History Gacha ==\n";
+                    cout << "1. View Gacha History\n";
+                    cout << "2. View Recent Characters\n";
+                    cout << "3. View Character Queue\n";
+                    cout << "4. Kembali ke Menu Utama\n";
+                    cout << "Pilih opsi: ";
+                    cin >> hChoice;
+
+                    switch (hChoice) {
+                        case 1: history.viewHistory(); break;
+                        case 2: recentCharacters.display(); break;
+                        case 3: characterQueue.display(); break;
+                        case 4: cout << "Kembali ke Menu Utama...\n"; break;
+                        default: cout << "Pilihan tidak valid.\n";
+                    }
+
+                } while (hChoice != 4);
+                break;
+            }
+            case 3: {
+                static bool isLoaded = false;
+                if (!isLoaded) {
+                    CharacterLibrary lib;
+                    lib.loadToTree(characterTree);
+                    isLoaded = true;
+                }
+            
+                int sub;
+                do {
+                    cout << "\n=== Library Menu ===\n";
+                    cout << "1. Lihat Isi Tree (Label A-Z)\n";
+                    cout << "2. Cari Karakter / Lightcone\n";
+                    cout << "3. Kembali ke Menu Utama\n";
+                    cout << "Pilihan: ";
+                    cin >> sub;
+                    cin.ignore();
+            
+                    switch (sub) {
+                        case 1: characterTree.viewGroupedByAlphabet(); break;
+                        case 2: {
+                            string keyword;
+                            cout << "Masukkan keyword pencarian: ";
+                            getline(cin, keyword);
+                            characterTree.searchSubstring(keyword);
+                            break;
+                        }
+                        case 3: cout << "Kembali ke menu utama...\n"; break;
+                        default: cout << "Pilihan tidak valid.\n";
+                    }
+            
+                } while (sub != 3);
+                break;
+            }
+                    
+            case 4: saveGame(); break;
+            case 5: loadGame(); break;
+            case 6: manageTeam(); break;
+            case 7: displayTeam(); break;
+            case 8: {
+            if (team.empty()) cout << "Bentuk tim dulu melalui opsi 6.\n";
+            else battle(team);
+            break;
+            }
+            case 9:
+            shop();
+            break;
+            case 10: cout << "Exiting...\n"; break;
+            default: cout << "Invalid choice.\n";
+        }
+    } while (choice != 10);
+
+    return 0;
+}
