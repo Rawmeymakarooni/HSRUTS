@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <map>
+#include <unordered_map>
 #include <windows.h>
 #include <mmsystem.h>
 #include <fstream>
@@ -988,6 +989,9 @@ public:
                     std::cout << "\nBerhasil membeli karakter: " << itemNode->item.name << "!\n";
                     // Item successfully added to inventory
                     // (Character tree is updated elsewhere when displaying)
+                
+                    // Decrease stock for characters since they can only be bought once
+                    updateStock(root, itemNode->item.name, 0);
                 } else {
                     std::cout << "\nBerhasil meningkatkan karakter " << itemNode->item.name 
                               << " ke Eidolon " << eidolon << "!\n";
@@ -1059,12 +1063,8 @@ public:
                 std::cout << std::setw(10) << (isChar ? "Character" : "Lightcone") << " | ";
                 std::cout << std::right << std::setw(8) << item.price << " | ";
                 
-                // Display stock appropriately
-                if (item.stock == -1) {
-                    std::cout << std::setw(7) << "N/A" << " |\n";
-                } else {
-                    std::cout << std::setw(7) << item.stock << " |\n";
-                }
+                // Always display the actual stock value
+                std::cout << std::setw(7) << item.stock << " |\n";
             }
             std::cout << "+" << std::string(40, '-') << "+" << std::string(12, '-') << "+" << std::string(10, '-') << "+" << std::string(9, '-') << "+\n";
         }
@@ -1160,12 +1160,8 @@ public:
                 std::cout << std::setw(10) << (isChar ? "Character" : "Lightcone") << " | ";
                 std::cout << std::right << std::setw(8) << item.price << " | ";
                 
-                // Display stock appropriately
-                if (item.stock == -1) {
-                    std::cout << std::setw(7) << "N/A" << " |\n";
-                } else {
-                    std::cout << std::setw(7) << item.stock << " |\n";
-                }
+                // Always display the actual stock value
+                std::cout << std::setw(7) << item.stock << " |\n";
             }
             std::cout << "+" << std::string(40, '-') << "+" << std::string(12, '-') << "+" << std::string(10, '-') << "+" << std::string(9, '-') << "+\n";
         }
@@ -1297,40 +1293,181 @@ void initShopItems() {
         initialized = true;
     }
     
-    // Insert characters (with stock - set to -1 for display purposes and isCharacter set to true)
+    // Clear existing items first to avoid duplicates when re-initializing
+    shopTree = AVLShopTree();
+    
+    // Insert characters with stock of 1 (can only be purchased once)
     for (const auto& character : shopCharacters) {
-        // Characters have different price tiers based on rarity (just for example)
-        int price = 5000; // Base price for all characters
-        shopTree.insert(ShopItem(character, price, -1, true)); // -1 stock means "not applicable", true = is a character
+        // Fixed price of 5000 for all characters as requested
+        int price = 5000;
+        shopTree.insert(ShopItem(character, price, 1, true)); // Stock of 1 means can only be purchased once, true = is a character
     }
     
     // Insert lightcones with stock between 1-3 and isCharacter set to false
+    // with variable pricing between 3400-5000
     for (const auto& lightcone : shopLightcones) {
-        // Lightcones have a lower base price than characters
-        int price = 3000; // Base price for all lightcones
+        // Varied price for lightcones between 3400-5000
+        int price = 3400 + (rand() % 1601); // Random price between 3400-5000
         int stock = (rand() % 3) + 1; // Random stock between 1-3
         shopTree.insert(ShopItem(lightcone, price, stock, false)); // false = is a lightcone
     }
 }
 
-// ... (rest of the code remains the same)
+// Forward declarations for shop menus
+void showCharacterShop();
+void showLightconeShop();
 
+// Main shop menu function
 void showShopMenu() {
+    // Initialize shop items to ensure shop is populated
+    initShopItems();
+    
     bool exitShop = false;
-    int viewMode = 0; // 0: by name, 1: by price, 2: by stock, 3: AVL structure, 4: AVL stats
     
     while (!exitShop) {
         system("cls");
-        std::cout << "\n===== SHOP =====\n";
+        std::cout << "\n===== SHOP MENU =====\n";
+        std::cout << "Starglitter Anda: " << starglitter << "\n";
+        std::cout << "1. Character Shop\n";
+        std::cout << "2. Lightcone Shop\n";
+        std::cout << "3. Kembali ke Menu Utama\n";
+        std::cout << "Pilihan: ";
+        
+        int menuChoice;
+        std::cin >> menuChoice;
+        
+        switch(menuChoice) {
+            case 1:
+                showCharacterShop();
+                break;
+            case 2:
+                showLightconeShop();
+                break;
+            case 3:
+                exitShop = true;
+                break;
+            default:
+                std::cout << "Pilihan tidak valid!\n";
+                system("pause");
+        }
+    }
+}
+
+// Character shop menu with specialized views for characters
+void showCharacterShop() {
+    bool exitCharacterShop = false;
+    int viewMode = 0; // 0: by name, 1: by price, 2: AVL structure, 3: AVL stats
+    
+    while (!exitCharacterShop) {
+        system("cls");
+        std::cout << "\n===== CHARACTER SHOP =====\n";
         std::cout << "Starglitter Anda: " << starglitter << "\n";
         
-        // Display shop items based on current view mode
+        // Create character-specific AVL tree
+        AVLShopTree characterShopTree;
+        for (const auto& character : shopCharacters) {
+            int price = 5000;
+            characterShopTree.insert(ShopItem(character, price, 1, true)); // Stock 1 for characters
+        }
+        
+        // Display characters based on current view mode
         switch (viewMode) {
-            case 0: shopTree.displayByName(); break;
-            case 1: shopTree.displayByPrice(); break;
-            case 2: shopTree.displayByStock(); break;
-            case 3: shopTree.displayAVLStructure(); break;
-            case 4: shopTree.displayAVLStats(); break;
+            case 0: characterShopTree.displayByName(); break;
+            case 1: characterShopTree.displayByPrice(); break;
+            case 2: characterShopTree.displayAVLStructure(); break;
+            case 3: characterShopTree.displayAVLStats(); break;
+        }
+        
+        std::cout << "[t] Toggle View Mode (" << 
+            (viewMode == 0 ? "Name -> Price" : 
+             viewMode == 1 ? "Price -> AVL Structure" : 
+             viewMode == 2 ? "AVL Structure -> AVL Stats" : "AVL Stats -> Name") << ")\n";
+        
+        // Only show purchase option if not in AVL structure or stats view mode
+        if (viewMode < 2) {
+            std::cout << "[p] Beli Character\n";
+        }
+        
+        // AVL-specific explanations
+        if (viewMode == 2) {
+            std::cout << "\n--- AVL Tree Information ---\n";
+            std::cout << "AVL trees maintain balance through rotations.\n";
+            std::cout << "Balance factors shown in parentheses (height of right - height of left).\n";
+            std::cout << "For a balanced AVL tree, all nodes must have balance factors of -1, 0, or 1.\n";
+        } 
+        else if (viewMode == 3) {
+            std::cout << "\n--- Why Use AVL Trees? ---\n";
+            std::cout << "- Search/insert/delete operations all work in O(log n) guaranteed time\n";
+            std::cout << "- Self-balancing ensures tree doesn't degrade to linked list\n";
+            std::cout << "- Height is always ~1.44*log2(n), making searches efficient\n";
+        }
+
+        std::cout << "[b] Kembali ke Shop Menu\n";
+        std::cout << "Pilihan: ";
+        char option;
+        std::cin >> option;
+        
+        switch(option) {
+            case 't': case 'T':
+                // Toggle view mode in a cycle (4 modes for characters)
+                viewMode = (viewMode + 1) % 4;
+                break;
+            case 'p': case 'P':
+                if (viewMode < 2) { // Only allow purchases from item views
+                    // Purchase functionality
+                    std::cin.ignore(); // Clear input buffer
+                    std::cout << "Masukkan nama character yang ingin dibeli: ";
+                    std::string itemName;
+                    getline(std::cin, itemName);
+                    
+                    // Process purchase using the global shop tree
+                    if (shopTree.purchaseItem(itemName, starglitter)) {
+                        // Success message - saving is handled in the purchaseItem method
+                        std::cout << "Pembelian character berhasil! Starglitter tersisa: " << starglitter << "\n";
+                    } else {
+                        std::cout << "Gagal membeli character. Pastikan nama karakter benar.\n";
+                    }
+                    system("pause");
+                } else {
+                    std::cout << "Untuk membeli character, silahkan gunakan tampilan nama atau harga.\n";
+                    system("pause");
+                }
+                break;
+            case 'b': case 'B':
+                exitCharacterShop = true;
+                break;
+            default:
+                std::cout << "Pilihan tidak valid!\n";
+                system("pause");
+        }
+    }
+}
+
+// Lightcone shop menu with all view modes including stock
+void showLightconeShop() {
+    bool exitLightconeShop = false;
+    int viewMode = 0; // 0: by name, 1: by price, 2: by stock, 3: AVL structure, 4: AVL stats
+    
+    while (!exitLightconeShop) {
+        system("cls");
+        std::cout << "\n===== LIGHTCONE SHOP =====\n";
+        std::cout << "Starglitter Anda: " << starglitter << "\n";
+        
+        // Create lightcone-specific AVL tree
+        AVLShopTree lightconeShopTree;
+        for (const auto& lightcone : shopLightcones) {
+            int price = 3400 + (rand() % 1601); // Random price between 3400-5000
+            int stock = (rand() % 3) + 1; // Random stock between 1-3
+            lightconeShopTree.insert(ShopItem(lightcone, price, stock, false));
+        }
+        
+        // Display lightcones based on current view mode
+        switch (viewMode) {
+            case 0: lightconeShopTree.displayByName(); break;
+            case 1: lightconeShopTree.displayByPrice(); break;
+            case 2: lightconeShopTree.displayByStock(); break;
+            case 3: lightconeShopTree.displayAVLStructure(); break;
+            case 4: lightconeShopTree.displayAVLStats(); break;
         }
         
         std::cout << "[t] Toggle View Mode (" << 
@@ -1341,7 +1478,7 @@ void showShopMenu() {
         
         // Only show purchase option if not in AVL structure or stats view mode
         if (viewMode < 3) {
-            std::cout << "[p] Beli Item\n";
+            std::cout << "[p] Beli Lightcone\n";
         }
         
         // AVL-specific explanations
@@ -1358,37 +1495,39 @@ void showShopMenu() {
             std::cout << "- Height is always ~1.44*log2(n), making searches efficient\n";
         }
 
-        std::cout << "[b] Kembali ke Menu Utama\n";
+        std::cout << "[b] Kembali ke Shop Menu\n";
         std::cout << "Pilihan: ";
         char option;
         std::cin >> option;
         
         switch(option) {
             case 't': case 'T':
-                // Toggle view mode in a cycle
+                // Toggle view mode in a cycle (5 modes for lightcones)
                 viewMode = (viewMode + 1) % 5;
                 break;
             case 'p': case 'P':
                 if (viewMode < 3) { // Only allow purchases from item views
                     // Purchase functionality
                     std::cin.ignore(); // Clear input buffer
-                    std::cout << "Masukkan nama item yang ingin dibeli: ";
+                    std::cout << "Masukkan nama lightcone yang ingin dibeli: ";
                     std::string itemName;
                     getline(std::cin, itemName);
                     
-                    // Process purchase using the integrated functionality
+                    // Process purchase using the global shop tree
                     if (shopTree.purchaseItem(itemName, starglitter)) {
                         // Success message - saving is handled in the purchaseItem method
-                        std::cout << "Pembelian berhasil! Starglitter tersisa: " << starglitter << "\n";
+                        std::cout << "Pembelian lightcone berhasil! Starglitter tersisa: " << starglitter << "\n";
+                    } else {
+                        std::cout << "Gagal membeli lightcone. Pastikan nama lightcone benar dan stok tersedia.\n";
                     }
                     system("pause");
                 } else {
-                    std::cout << "Untuk membeli item, silahkan gunakan tampilan nama, harga, atau stok.\n";
+                    std::cout << "Untuk membeli lightcone, silahkan gunakan tampilan nama, harga, atau stok.\n";
                     system("pause");
                 }
                 break;
             case 'b': case 'B':
-                exitShop = true;
+                exitLightconeShop = true;
                 break;
             default:
                 std::cout << "Pilihan tidak valid!\n";
@@ -2786,7 +2925,7 @@ int main() {
             showBattleHistoryAndPerformance();
             break;
             case 10:
-            shop();
+            showShopMenu();
             break;
             case 0: cout << "Exiting...\n"; break;
             default: cout << "Invalid choice.\n";
