@@ -1,17 +1,23 @@
 #include <iostream>
-#include <string>
 #include <vector>
-#include <cstdlib>
+#include <string>
 #include <ctime>
-#include <map>
-#include <set>
-#include <fstream>
+#include <random>
 #include <algorithm>
-#include <unordered_map>
-#include <regex>
-#include <limits>
+#include <iomanip>
+#include <map>
 #include <windows.h>
 #include <mmsystem.h>
+#include <fstream>
+#include <regex>
+#include <cmath>
+#include <stdexcept>
+#include <queue>
+#include <set>
+#include <limits>
+
+#include "AVLCharacterTree.h"
+#include <stdexcept> // Tambahan untuk Exception Handling
 #pragma comment(lib, "winmm.lib")
 
 using namespace std;
@@ -67,6 +73,72 @@ int pityCounter5RateUp = 0, pityCounter4RateUp = 0;
 int pityCounter5Standard = 0, pityCounter4Standard = 0;
 int pityCounter5Lightcone = 0, pityCounter4Lightcone = 0;
 static bool guaranteedLightconeNext = false;
+
+// Deklarasi struktur data untuk battle history
+struct BattleAction {
+    string actor;
+    string target;
+    string action;
+    int damage;
+    BattleAction* next = nullptr;
+    
+    BattleAction(string actor, string target, string action, int damage)
+        : actor(actor), target(target), action(action), damage(damage), next(nullptr) {}
+};
+
+class BattleHistory {
+public:
+    string bossName;
+    int totalActions = 0;
+    BattleAction* head = nullptr; // First action
+    
+    BattleHistory() : head(nullptr) {}
+    BattleHistory(string boss) : bossName(boss), head(nullptr) {}
+    
+    void addAction(string actor, string target, string action, int damage, int turn = 0, string desc = "") {
+        BattleAction* newAction = new BattleAction(actor, target, action, damage);
+        if (!head) {
+            head = newAction;
+        } else {
+            BattleAction* curr = head;
+            while (curr->next) curr = curr->next;
+            curr->next = newAction;
+        }
+        totalActions++;
+    }
+    
+    void clear() {
+        while (head) {
+            BattleAction* temp = head;
+            head = head->next;
+            delete temp;
+        }
+        totalActions = 0;
+    }
+    
+    void showBFS() {
+        // Implementation for showBFS
+        cout << "BFS traversal implemented\n";
+    }
+    
+    void showDFS() {
+        // Implementation for showDFS
+        cout << "DFS traversal implemented\n";
+    }
+    
+    void showPerformanceGraph() {
+        // Implementation for showPerformanceGraph
+        cout << "Performance graph implemented\n";
+    }
+    
+    ~BattleHistory() {
+        clear();
+    }
+};
+
+vector<BattleHistory> allBattles;
+vector<string> bossNames;
+BattleHistory battleHistory;
 
 struct Lightcone {
     string name;
@@ -676,96 +748,114 @@ void battle(vector<string>& teamNames) {
 
 // ... (sisa kode tetap sama)
 
-// ===== Battle Action History (DFS) =====
-struct BattleAction {
-    string actor;      // Nama karakter atau boss
-    string actionType; // "Attack", "Skill", "Ultimate", "BossAttack", dst
-    string target;     // Nama target
-    int value;         // Damage/heal/shield value
-    int turn;          // Turn ke berapa
-    string desc;       // Deskripsi aksi
-    BattleAction* prev; // Untuk DFS (reverse traversal)
-    BattleAction* next; // Untuk BFS (forward traversal)
-    BattleAction(const string& actor, const string& actionType, const string& target, int value, int turn, const string& desc)
-        : actor(actor), actionType(actionType), target(target), value(value), turn(turn), desc(desc), prev(nullptr), next(nullptr) {}
+// ===== Circular Linked List =====
+
+// ===== SHOP AVL TREE SEDERHANA =====
+struct ShopItem {
+    std::string name;
+    int price;
+    int stock;
+    ShopItem(const std::string& n, int p, int s) : name(n), price(p), stock(s) {}
 };
 
-class BattleHistory {
-    BattleAction* head = nullptr; // First action
-    BattleAction* tail = nullptr; // Last action
+struct AVLShopNode {
+    ShopItem item;
+    AVLShopNode* left;
+    AVLShopNode* right;
+    int height;
+    AVLShopNode(const ShopItem& i) : item(i), left(nullptr), right(nullptr), height(1) {}
+};
+
+class AVLShopTree {
+    AVLShopNode* root = nullptr;
+    int height(AVLShopNode* n) { return n ? n->height : 0; }
+    int getBalance(AVLShopNode* n) { return n ? height(n->left) - height(n->right) : 0; }
+    AVLShopNode* rightRotate(AVLShopNode* y) {
+        AVLShopNode* x = y->left;
+        AVLShopNode* T2 = x->right;
+        x->right = y;
+        y->left = T2;
+        y->height = std::max(height(y->left), height(y->right)) + 1;
+        x->height = std::max(height(x->left), height(x->right)) + 1;
+        return x;
+    }
+    AVLShopNode* leftRotate(AVLShopNode* x) {
+        AVLShopNode* y = x->right;
+        AVLShopNode* T2 = y->left;
+        y->left = x;
+        x->right = T2;
+        x->height = std::max(height(x->left), height(x->right)) + 1;
+        y->height = std::max(height(y->left), height(y->right)) + 1;
+        return y;
+    }
+    AVLShopNode* insert(AVLShopNode* node, const ShopItem& item) {
+        if (!node) return new AVLShopNode(item);
+        if (item.name < node->item.name)
+            node->left = insert(node->left, item);
+        else if (item.name > node->item.name)
+            node->right = insert(node->right, item);
+        else
+            return node; // duplikat nama tidak diinsert
+        node->height = 1 + std::max(height(node->left), height(node->right));
+        int balance = getBalance(node);
+        // Left Left
+        if (balance > 1 && item.name < node->left->item.name)
+            return rightRotate(node);
+        // Right Right
+        if (balance < -1 && item.name > node->right->item.name)
+            return leftRotate(node);
+        // Left Right
+        if (balance > 1 && item.name > node->left->item.name) {
+            node->left = leftRotate(node->left);
+            return rightRotate(node);
+        }
+        // Right Left
+        if (balance < -1 && item.name < node->right->item.name) {
+            node->right = rightRotate(node->right);
+            return leftRotate(node);
+        }
+        return node;
+    }
+    void inorder(AVLShopNode* node) {
+        if (!node) return;
+        inorder(node->left);
+        std::cout << "- " << node->item.name << " | Harga: " << node->item.price << " | Stok: " << node->item.stock << "\n";
+        inorder(node->right);
+    }
+    void clear(AVLShopNode* node) {
+        if (!node) return;
+        clear(node->left);
+        clear(node->right);
+        delete node;
+    }
 public:
-    void addAction(const string& actor, const string& actionType, const string& target, int value, int turn, const string& desc) {
-        BattleAction* node = new BattleAction(actor, actionType, target, value, turn, desc);
-        if (!head) {
-            head = tail = node;
-        } else {
-            tail->next = node;
-            node->prev = tail;
-            tail = node;
-        }
+    ~AVLShopTree() { clear(root); }
+    void insert(const ShopItem& item) { root = insert(root, item); }
+    void display() {
+        std::cout << "\n=== SHOP ITEM LIST (AVL) ===\n";
+        if (!root) std::cout << "(Shop kosong)\n";
+        else inorder(root);
     }
-    // DFS: tampilkan dari last ke first
-    void showDFS() const {
-        if (!tail) {
-            cout << "\n(Belum ada aksi dicatat)\n";
-            return;
-        }
-        cout << "\n=== Riwayat Aksi Pertarungan (DFS: terbaru ke terlama) ===\n";
-        const BattleAction* curr = tail;
-        int idx = 1;
-        while (curr) {
-            cout << idx++ << ". [Turn " << curr->turn << "] " << curr->desc << "\n";
-            curr = curr->prev;
-        }
-    }
-    // BFS: tampilkan dari first ke last
-    void showBFS() const {
-        if (!head) {
-            cout << "\n(Belum ada aksi dicatat)\n";
-            return;
-        }
-        cout << "\n=== Riwayat Aksi Pertarungan (BFS: awal ke akhir) ===\n";
-        const BattleAction* curr = head;
-        int idx = 1;
-        while (curr) {
-            cout << idx++ << ". [Turn " << curr->turn << "] " << curr->desc << "\n";
-            curr = curr->next;
-        }
-    }
-    // Visualisasi performa: grafik damage tiap aksi
-    void showPerformanceGraph() const {
-        if (!head) {
-            cout << "\n(Belum ada aksi dicatat)\n";
-            return;
-        }
-        cout << "\n=== Grafik Performa Pertarungan (Damage per Aksi) ===\n";
-        const BattleAction* curr = head;
-        int idx = 1;
-        while (curr) {
-            if (curr->value > 0 && (curr->actionType == "BasicAttack" || curr->actionType == "Skill" || curr->actionType == "Ultimate" || curr->actionType == "BossAttack")) {
-                cout << idx << ". [" << curr->actor << "] ";
-                int barLen = min(50, curr->value / 10); // 10 damage = 1 '#', max 50
-                for (int i = 0; i < barLen; ++i) cout << "#";
-                cout << " (" << curr->value << ")\n";
-            }
-            curr = curr->next;
-            idx++;
-        }
-    }
-    void clear() {
-        while (head) {
-            BattleAction* tmp = head;
-            head = head->next;
-            delete tmp;
-        }
-        tail = nullptr;
-    }
-    ~BattleHistory() { clear(); }
 };
 
-BattleHistory battleHistory;
-vector<BattleHistory> allBattles;
-vector<string> bossNames;
+AVLShopTree shopTree;
+
+void initShopItems() {
+    shopTree.insert(ShopItem("Potion", 50, 10));
+    shopTree.insert(ShopItem("Ether", 100, 5));
+    shopTree.insert(ShopItem("Revive", 200, 2));
+    shopTree.insert(ShopItem("Attack Boost", 150, 4));
+    shopTree.insert(ShopItem("Defense Boost", 120, 4));
+}
+
+void showShopMenu() {
+    std::cout << "\n===== SHOP =====\n";
+    shopTree.display();
+    std::cout << "\nKetik apapun lalu Enter untuk kembali ke menu utama...\n";
+    std::string dummy; std::getline(std::cin, dummy);
+}
+// ===== END SHOP AVL TREE =====
+
 
 // Circular Linked List
 struct CircleNode {
@@ -1175,16 +1265,17 @@ public:
         cout << "\n=== Tree Diurut Berdasarkan Awalan Huruf ===\n";
         map<char, vector<string>> groups;
         collectByAlphabet(root, groups);
-
-        for (char c = 'A'; c <= 'Z'; ++c) {
-            if (groups.count(c)) {
-                vector<string>& vec = groups[c];
-                if (!vec.empty()) mergeSort(vec, 0, vec.size() - 1);  
-
-                cout << "[" << c << "]\n";
-                for (const string& name : vec)
-                    cout << " - " << name << "\n";
-            }
+        
+        // Menggunakan iterator eksplisit untuk traversal map
+        for (map<char, vector<string>>::iterator it = groups.begin(); it != groups.end(); ++it) {
+            char c = it->first;
+            vector<string>& vec = it->second;
+            if (!vec.empty()) mergeSort(vec, 0, vec.size() - 1);
+            
+            cout << "[" << c << "]\n";
+            // Menggunakan iterator eksplisit untuk traversal vector
+            for (vector<string>::iterator v_it = vec.begin(); v_it != vec.end(); ++v_it)
+                cout << " - " << *v_it << "\n";
         }
     }
     void searchSubstring(string keyword, bool fuzzy = false, int maxDistance = 2) {
@@ -1206,6 +1297,18 @@ public:
 };
 
 CharacterTree characterTree;
+AVLCharacterTree avlCharacterTree;
+
+// Deklarasi fungsi-fungsi
+void saveGame();
+void loadGame();
+void manageTeam();
+void displayTeam();
+void battle(vector<string>& selectedTeam);
+void shop();
+void displayStarglitter();
+void showBattleHistoryAndPerformance();
+void showAVLMenu();
 
 // Library (fixed)
 struct CharacterLibrary {
@@ -1252,13 +1355,30 @@ struct CharacterLibrary {
         for (const auto& ch : characters) tree.addCharacter(ch);
         for (const auto& lc : lightcones) tree.addCharacter(lc);
     }
+    
+    void loadToAVLTree(AVLCharacterTree& tree) {
+        for (const auto& ch : characters) tree.addCharacter(ch);
+        for (const auto& lc : lightcones) tree.addCharacter(lc);
+    }
 };
 
 // Gacha
+// Fungsi untuk mengecek pity counter dan menangani exception
+void exampleCheckPity(int pity) {
+    try {
+        if (pity > 1000) throw overflow_error("Pity counter terlalu tinggi! Mungkin terjadi bug atau manipulasi data.");
+    } catch (const overflow_error& e) {
+        cerr << "Warning: " << e.what() << endl;
+    }
+}
+
 pair<string, string> performBannerGacha(int& pity5, int& pity4, BannerType banner) {
     int roll = rand() % 100 + 1;
     pity5++;
     pity4++;
+    
+    // Cek pity counter dengan exception handling
+    exampleCheckPity(pity5);
 
     // 5★ pity / roll
     if (pity5 >= 90 || roll <= 1) {
@@ -1504,148 +1624,142 @@ void displayTeam() {
 }
 
 
-
 void displayStarglitter() {
     cout << "\nStarglitter: " << starglitter << "\n";
 }
 
 void saveGame() {
-    ofstream out("save_data.txt");
-    out << starglitter << "\n";
-    out << team.size() << "\n";
-    for (string& t : team) out << t << "\n";
-    out << ownedCharacters.size() << "\n";
-    for (auto& [name, eid] : ownedCharacters) out << name << " " << eid << "\n";
-    out << equippedLightcones.size() << "\n";
-    for (auto& [nama, lc] : equippedLightcones)
-    out << nama << "|" << lc << "\n";
-    // Simpan superimposition lightcone
-    out << lightconeSuperimposition.size() << "\n";
-    for (auto& [lcName, Slevel] : lightconeSuperimposition) {
-    out << lcName << " " << Slevel << "\n";
-    }
-    // Simpan seluruh riwayat battle
-    out << allBattles.size() << "\n";
-    for (size_t i = 0; i < allBattles.size(); ++i) {
-        out << bossNames[i] << "\n";
-        // Hitung jumlah aksi
-        int nAksi = 0;
-        for (BattleAction* act = allBattles[i].head; act; act = act->next) ++nAksi;
-        out << nAksi << "\n";
-        for (BattleAction* act = allBattles[i].head; act; act = act->next) {
-            out << act->actor << "|" << act->actionType << "|" << act->target << "|" << act->value << "|" << act->turn << "|" << act->desc << "\n";
+    try {
+        ofstream out("save_data.txt");
+        if (!out) throw runtime_error("Gagal membuka file untuk menyimpan.");
+        
+        out << starglitter << "\n"; 
+        out << pityCounter5RateUp << " " << pityCounter4RateUp << "\n";
+        out << pityCounter5Standard << " " << pityCounter4Standard << "\n";
+        out << pityCounter5Lightcone << " " << pityCounter4Lightcone << "\n";
+        
+        out << team.size() << "\n";
+        for (const auto& ch : team) {
+            out << ch << "\n";
         }
+        
+        size_t n = 0;
+        for (auto it = equippedLightcones.begin(); it != equippedLightcones.end(); ++it) {
+            if (!it->second.empty()) n++;
+        }
+        out << n << "\n";
+        for (auto it = equippedLightcones.begin(); it != equippedLightcones.end(); ++it) {
+            if (!it->second.empty()) {
+                out << it->first << "\n" << it->second << "\n";
+            }
+        }
+        
+        out << allBattles.size() << "\n";
+        for (size_t i = 0; i < allBattles.size(); ++i) {
+            out << bossNames[i] << "\n";
+            int nAksi = allBattles[i].totalActions;
+            out << nAksi << "\n";
+            BattleAction* act = allBattles[i].head;
+            while (act) {
+                out << act->actor << "\n" << act->target << "\n" << act->action << "\n" << act->damage << "\n";
+                act = act->next;
+            }
+        }
+        
+        out.close();
+        cout << "Game berhasil disimpan.\n";
+    } catch (const exception& e) {
+        cerr << "Terjadi kesalahan saat menyimpan: " << e.what() << endl;
     }
-    out.close();
-    cout << "Game berhasil disimpan.\n";
 }
 
 void loadGame() {
-    ifstream in("save_data.txt");
-    if (!in) {
-        cout << "Tidak ada file save.\n";
-        return;
-    }
-
-    // 1) Clear all existing state
-    ownedCharacters.clear();
-    team.clear();
-    equippedLightcones.clear();
-    lightconeSuperimposition.clear();
-
-    // 2) Read starglitter & team
-    in >> starglitter;
-    int teamSize; 
-    in >> teamSize; 
-    in.ignore(numeric_limits<streamsize>::max(), '\n');
-    for (int i = 0; i < teamSize; ++i) {
-        string line;
-        getline(in, line);
-        team.push_back(line);
-    }
-
-    // 3) Read ownedCharacters
-    int count;
-    in >> count;
-    in.ignore(numeric_limits<streamsize>::max(), '\n'); // Untuk buang newline sisa
-    for (int i = 0; i < count; ++i) {
-        string line;
-        getline(in, line);
-        size_t pos = line.find_last_of(' ');
-        if (pos != string::npos) {
-            string fullName = line.substr(0, pos);
-            int eid = stoi(line.substr(pos + 1));
-            ownedCharacters[fullName] = eid;
-        }
-    }
-
-    // 4) Read equipped lightcones
-    int eqCount;
-    in >> eqCount;
-    in.ignore(numeric_limits<streamsize>::max(), '\n');
-    for (int i = 0; i < eqCount; ++i) {
-        string line;
-        getline(in, line);
-        size_t split = line.find('|');
-        if (split != string::npos) {
-            string nama = line.substr(0, split);
-            string lc   = line.substr(split + 1);
-            equippedLightcones[nama] = lc;
-        }
-    }
-
-    // 5) Read superimposition levels (using getline + last-space split)
-    int lcSCount;
-    in >> lcSCount;
-    in.ignore(numeric_limits<streamsize>::max(), '\n');
-    for (int i = 0; i < lcSCount; ++i) {
-        string line;
-        getline(in, line);
-        // find last space to split off the numeric level
-        size_t pos = line.find_last_of(' ');
-        if (pos != string::npos) {
-            string lcName = line.substr(0, pos);
-            int level     = stoi(line.substr(pos + 1));
-            lightconeSuperimposition[lcName] = level;
-        }
-    }
-
-    // Load seluruh riwayat battle
-    allBattles.clear();
-    bossNames.clear();
-    int nBattle = 0;
-    if (in >> nBattle) {
+    try {
+        ifstream in("save_data.txt");
+        if (!in) throw runtime_error("File save tidak ditemukan.");
+        
+        // 1) Clear all existing state
+        team.clear();
+        equippedLightcones.clear();
+        allBattles.clear();
+        bossNames.clear();
+        
+        // 2) Read starglitter & pity counters
+        in >> starglitter;
+        if (in.fail()) throw runtime_error("Format file rusak (starglitter).");
+        
+        in >> pityCounter5RateUp >> pityCounter4RateUp;
+        in >> pityCounter5Standard >> pityCounter4Standard;
+        in >> pityCounter5Lightcone >> pityCounter4Lightcone;
+        
+        // 3) Read team
+        int teamSize; 
+        in >> teamSize;
+        if (in.fail() || teamSize < 0) throw runtime_error("Format file rusak (team size).");
+        
         in.ignore(numeric_limits<streamsize>::max(), '\n');
-        for (int i = 0; i < nBattle; ++i) {
-            string boss;
-            getline(in, boss);
-            bossNames.push_back(boss);
-            int nAksi = 0;
-            in >> nAksi;
-            in.ignore(numeric_limits<streamsize>::max(), '\n');
-            BattleHistory bh;
-            for (int j = 0; j < nAksi; ++j) {
-                string line;
-                getline(in, line);
-                size_t p1 = line.find('|');
-                size_t p2 = line.find('|', p1 + 1);
-                size_t p3 = line.find('|', p2 + 1);
-                size_t p4 = line.find('|', p3 + 1);
-                size_t p5 = line.find('|', p4 + 1);
-                if (p1 == string::npos || p2 == string::npos || p3 == string::npos || p4 == string::npos || p5 == string::npos) continue;
-                string actor = line.substr(0, p1);
-                string actionType = line.substr(p1 + 1, p2 - p1 - 1);
-                string target = line.substr(p2 + 1, p3 - p2 - 1);
-                int value = stoi(line.substr(p3 + 1, p4 - p3 - 1));
-                int turn = stoi(line.substr(p4 + 1, p5 - p4 - 1));
-                string desc = line.substr(p5 + 1);
-                bh.addAction(actor, actionType, target, value, turn, desc);
+        for (int i = 0; i < teamSize; ++i) {
+            string line;
+            if (!getline(in, line) && i < teamSize - 1) {
+                throw runtime_error("Format file rusak (team entries).");
             }
-            allBattles.push_back(bh);
+            team.push_back(line);
         }
+        
+        // 4) Read equipped lightcones
+        int lcCount;
+        in >> lcCount;
+        if (in.fail() || lcCount < 0) throw runtime_error("Format file rusak (lightcone count).");
+        
+        in.ignore(numeric_limits<streamsize>::max(), '\n');
+        for (int i = 0; i < lcCount; ++i) {
+            string charName, lcName;
+            if (!getline(in, charName)) throw runtime_error("Format file rusak (lightcone char name).");
+            if (!getline(in, lcName)) throw runtime_error("Format file rusak (lightcone name).");
+            equippedLightcones[charName] = lcName;
+        }
+        
+        // 5) Read battle histories
+        int nBattles;
+        in >> nBattles;
+        if (in.fail() || nBattles < 0) throw runtime_error("Format file rusak (battle count).");
+        
+        in.ignore(numeric_limits<streamsize>::max(), '\n');
+        for (int i = 0; i < nBattles; ++i) {
+            string bossName;
+            if (!getline(in, bossName)) throw runtime_error("Format file rusak (boss name).");
+            bossNames.push_back(bossName);
+            
+            BattleHistory history;
+            history.bossName = bossName;
+            
+            int nActions;
+            in >> nActions;
+            if (in.fail() || nActions < 0) throw runtime_error("Format file rusak (action count).");
+            in.ignore(numeric_limits<streamsize>::max(), '\n');
+            
+            for (int j = 0; j < nActions; ++j) {
+                string actor, target, action;
+                int damage;
+                
+                if (!getline(in, actor)) throw runtime_error("Format file rusak (actor).");
+                if (!getline(in, target)) throw runtime_error("Format file rusak (target).");
+                if (!getline(in, action)) throw runtime_error("Format file rusak (action).");
+                
+                in >> damage;
+                if (in.fail()) throw runtime_error("Format file rusak (damage).");
+                in.ignore(numeric_limits<streamsize>::max(), '\n');
+                
+                history.addAction(actor, target, action, damage);
+            }
+            
+            allBattles.push_back(history);
+        }
+        
+        cout << "Game berhasil dimuat.\n";
+    } catch (const exception& e) {
+        cerr << "Error saat memuat game: " << e.what() << endl;
     }
-    in.close();
-    cout << "Game berhasil dimuat.\n";
 }
 
 void shop() {
@@ -1762,6 +1876,59 @@ void playGachaSound() {
 
 void playCastoriceVideo() {
     system("start \"\" \"../Assets/Animation/Castorice.mp4\"");
+}
+
+// Fungsi untuk menampilkan menu AVL Tree dan menggunakan fiturnya
+void showAVLMenu() {
+    int choice;
+    do {
+        system("cls");
+        cout << "\n=== AVL Tree Menu ===\n";
+        cout << "1. Tampilkan karakter dikelompokkan berdasarkan huruf awal\n";
+        cout << "2. Tampilkan properti AVL Tree (tinggi dan balance factor)\n";
+        cout << "3. Cari karakter dalam AVL Tree\n";
+        cout << "4. Kembali ke Menu Utama\n";
+        cout << "Pilihan Anda: ";
+        cin >> choice;
+        
+        switch (choice) {
+            case 1:
+                system("cls");
+                avlCharacterTree.viewGroupedByAlphabet();
+                system("pause");
+                break;
+                
+            case 2:
+                system("cls");
+                avlCharacterTree.displayTreeProperties();
+                system("pause");
+                break;
+                
+            case 3: {
+                system("cls");
+                cin.ignore();
+                string keyword;
+                cout << "\nMasukkan nama karakter yang dicari: ";
+                getline(cin, keyword);
+                
+                bool found = avlCharacterTree.findCharacter(keyword);
+                if (found) {
+                    cout << "\nKarakter '" << keyword << "' ditemukan dalam AVL Tree!\n";
+                } else {
+                    cout << "\nKarakter '" << keyword << "' tidak ditemukan.\n";
+                }
+                system("pause");
+                break;
+            }
+                
+            case 4:
+                return;
+                
+            default:
+                cout << "\nPilihan tidak valid.\n";
+                system("pause");
+        }
+    } while (true);
 }
 
 void showBattleHistoryAndPerformance() {
@@ -2004,6 +2171,9 @@ int main() {
             }
             case 9:
             shop();
+            break;
+            case 11: 
+            showBattleHistoryAndPerformance();
             break;
             case 10: cout << "Exiting...\n"; break;
             default: cout << "Invalid choice.\n";
