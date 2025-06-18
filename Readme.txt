@@ -1,5 +1,28 @@
 g++# Honkai Star Rail C++ Project
 
+## [UPDATE 2025-06-18] Fitur Shop AVL Terbaru
+- **AVL Shop Terintegrasi Inventory & Gacha**
+  - Fitur pembelian karakter & lightcone di shop AVL langsung update ke inventory (`ownedCharacters`, `lightconeSuperimposition`)
+  - Eidolon karakter otomatis naik sampai E6, jika sudah maksimum dapat kompensasi Starglitter
+  - Lightcone superimposition otomatis naik sampai S5, jika sudah maksimum dapat kompensasi Starglitter
+  - Stok lightcone otomatis berkurang setelah dibeli, stok karakter tetap N/A
+  - Nama, harga, dan stok bisa diurut/toggle pada tampilan shop (toggle: nama → harga → stok → AVL Structure → AVL Stats)
+  - UI shop menampilkan penjelasan AVL di mode struktur/statistik
+  - Setiap pembelian berhasil langsung auto-save
+
+### Referensi Lokasi Kode Terbaru (Honkai-Star-Rail.cpp)
+- **AVL ShopTree**  
+  - Deklarasi & implementasi: `class AVLShopTree` (sekitar line 765)
+  - Fungsi pembelian terintegrasi: `bool AVLShopTree::purchaseItem` (sekitar line 960)
+  - UI Shop AVL: `void showShopMenu()` (sekitar line 1318)
+- **Inventory & Gacha Integration**
+  - Data karakter: `ownedCharacters` (sekitar line 44)
+  - Data lightcone: `lightconeSuperimposition` (sekitar line 47)
+  - Starglitter: `int starglitter` (sekitar line 49)
+  - Save/load: `void saveGame()` (sekitar line 2200)
+
+---
+
 ## Kompilasi (Windows)
 Jika .exe tidak bisa dimainkan, compile dengan:
 ```
