@@ -75,6 +75,7 @@ int pityCounter5Lightcone = 0, pityCounter4Lightcone = 0;
 static bool guaranteedLightconeNext = false;
 
 // Deklarasi struktur data untuk battle history
+// ====== BFS & DFS: Riwayat Battle ======
 struct BattleAction {
     string actor;
     string target;
@@ -86,6 +87,7 @@ struct BattleAction {
         : actor(actor), target(target), action(action), damage(damage), next(nullptr) {}
 };
 
+// ====== BFS & DFS: Riwayat Battle ======
 class BattleHistory {
 public:
     string bossName;
@@ -766,6 +768,7 @@ struct AVLShopNode {
     AVLShopNode(const ShopItem& i) : item(i), left(nullptr), right(nullptr), height(1) {}
 };
 
+// ====== AVL Tree: Shop ======
 class AVLShopTree {
     AVLShopNode* root = nullptr;
     int height(AVLShopNode* n) { return n ? n->height : 0; }
@@ -858,6 +861,7 @@ void showShopMenu() {
 
 
 // Circular Linked List
+// ====== Circular Linked List: Cycling Karakter ======
 struct CircleNode {
     string character;
     CircleNode* next;
@@ -1185,6 +1189,7 @@ int levenshteinDistance(const std::string& s1, const std::string& s2) {
     return dp[m][n];
 }
 
+// ====== BST: Search Everything ======
 class CharacterTree {
     TreeNode* root;
 
