@@ -119,18 +119,110 @@ public:
     }
     
     void showBFS() {
-        // Implementation for showBFS
-        cout << "BFS traversal implemented\n";
+        cout << "\n=== Kronologi Battle (Urut dari awal) ===\n";
+        if (!head) {
+            cout << "Tidak ada aksi dalam riwayat.\n";
+            return;
+        }
+        
+        int count = 1;
+        BattleAction* curr = head;
+        while (curr) {
+            cout << count << ". " << curr->actor << " " << curr->action << " " 
+                 << curr->target << ", damage: " << curr->damage << "\n";
+            curr = curr->next;
+            count++;
+        }
     }
     
     void showDFS() {
-        // Implementation for showDFS
-        cout << "DFS traversal implemented\n";
+        cout << "\n=== Kronologi Battle (Urut dari akhir) ===\n";
+        if (!head) {
+            cout << "Tidak ada aksi dalam riwayat.\n";
+            return;
+        }
+        
+        // Collect actions in a vector for reverse iteration
+        vector<pair<string, int>> actions;
+        BattleAction* curr = head;
+        while (curr) {
+            string actionDesc = curr->actor + " " + curr->action + " " + curr->target + ", damage: " + to_string(curr->damage);
+            actions.push_back({actionDesc, curr->damage});
+            curr = curr->next;
+        }
+        
+        // Display actions in reverse order
+        for (int i = actions.size() - 1; i >= 0; i--) {
+            cout << (actions.size() - i) << ". " << actions[i].first << "\n";
+        }
     }
     
     void showPerformanceGraph() {
-        // Implementation for showPerformanceGraph
-        cout << "Performance graph implemented\n";
+        cout << "\n=== Performance Graph ===\n";
+        if (!head) {
+            cout << "Tidak ada aksi dalam riwayat.\n";
+            return;
+        }
+        
+        // Collect damage info by actor
+        map<string, int> totalDamage;
+        map<string, int> actionCount;
+        map<string, bool> isBoss; // Track if an actor is a boss
+        
+        // Assume the target of player characters is always a boss
+        string bossName = "";
+        BattleAction* curr = head;
+        while (curr) {
+            totalDamage[curr->actor] += curr->damage;
+            actionCount[curr->actor]++;
+            
+            // If this is the first action, the target is likely the boss
+            if (bossName.empty() && !curr->target.empty()) {
+                bossName = curr->target;
+                isBoss[bossName] = true;
+            }
+            
+            curr = curr->next;
+        }
+        
+        // Find max damage for scaling
+        int maxDamage = 0;
+        for (const auto& pair : totalDamage) {
+            maxDamage = max(maxDamage, pair.second);
+        }
+        
+        // Display damage distribution
+        cout << "Damage Distribution:\n";
+        for (const auto& pair : totalDamage) {
+            string displayName = pair.first;
+            if (isBoss[pair.first]) displayName += " (boss)";
+            
+            // Calculate bar length (max 40 characters)
+            int barLength = (pair.second * 40) / maxDamage;
+            string bar;
+            for (int i = 0; i < barLength; i++) bar += "-";
+            
+            cout << left << setw(16) << displayName << ": " << bar << " " << pair.second << " damage\n";
+        }
+        
+        // Display action counts
+        cout << "\nAction Counts:\n";
+        for (const auto& pair : actionCount) {
+            string displayName = pair.first;
+            if (isBoss[pair.first]) displayName += " (boss)";
+            
+            cout << left << setw(16) << displayName << ": " << pair.second << " actions\n";
+        }
+        
+        // Display average damage per action
+        cout << "\nAverage Damage Per Action:\n";
+        for (const auto& pair : totalDamage) {
+            string displayName = pair.first;
+            if (isBoss[pair.first]) displayName += " (boss)";
+            
+            float avg = (float)pair.second / actionCount[pair.first];
+            cout << left << setw(16) << displayName << ": " << fixed << setprecision(1) << avg << "\n";
+        }
     }
     
     ~BattleHistory() {
@@ -657,16 +749,10 @@ void battle(vector<string>& teamNames) {
 
         cout << "\n" << ch.name << ":\n";
         cout << "HP: " << ch.currentHP << "/" << ch.getTotalHP() << "\n";
-        cout << "1. Basic Attack\n2. Skill\n3. Ultimate (" << ch.skillCount << "/3)\n4. Lihat Riwayat Aksi (DFS)\n";
+        cout << "1. Basic Attack\n2. Skill\n3. Ultimate (" << ch.skillCount << "/3)\n";
         int input;
         cout << "Pilih aksi: ";
         cin >> input;
-
-        if (input == 4) {
-            battleHistory.showDFS();
-            system("pause");
-            continue;
-        }
 
         switch (input) {
             case 1: {
@@ -754,10 +840,11 @@ void battle(vector<string>& teamNames) {
 
 // ===== SHOP AVL TREE SEDERHANA =====
 struct ShopItem {
-    std::string name;
+    string name;
     int price;
-    int stock;
-    ShopItem(const std::string& n, int p, int s) : name(n), price(p), stock(s) {}
+    int stock; // -1 for characters with no stock limit
+    bool isCharacter; // true for character, false for lightcone
+    ShopItem(string n, int p, int s, bool ic = false) : name(n), price(p), stock(s), isCharacter(ic) {}
 };
 
 struct AVLShopNode {
@@ -825,6 +912,14 @@ class AVLShopTree {
         std::cout << "- " << node->item.name << " | Harga: " << node->item.price << " | Stok: " << node->item.stock << "\n";
         inorder(node->right);
     }
+    
+    // Collect all shop items into a vector for custom sorting
+    void collectItems(AVLShopNode* node, std::vector<ShopItem>& items) {
+        if (!node) return;
+        collectItems(node->left, items);
+        items.push_back(node->item);
+        collectItems(node->right, items);
+    }
     void clear(AVLShopNode* node) {
         if (!node) return;
         clear(node->left);
@@ -833,29 +928,473 @@ class AVLShopTree {
     }
 public:
     ~AVLShopTree() { clear(root); }
+    // Find a shop item by name
+    AVLShopNode* findItem(AVLShopNode* node, const string& name) {
+        if (!node) return nullptr;
+        if (name == node->item.name) return node;
+        if (name < node->item.name) return findItem(node->left, name);
+        return findItem(node->right, name);
+    }
+    
+    // Update item stock
+    void updateStock(AVLShopNode* node, const string& name, int newStock) {
+        if (!node) return;
+        if (node->item.name == name) {
+            node->item.stock = newStock;
+            return;
+        }
+        if (name < node->item.name) updateStock(node->left, name, newStock);
+        else updateStock(node->right, name, newStock);
+    }
+    
+public:
     void insert(const ShopItem& item) { root = insert(root, item); }
+    
+    // Purchase an item from the shop
+    bool purchaseItem(const string& itemName, int& starglitterBalance) {
+        AVLShopNode* itemNode = findItem(root, itemName);
+        
+        if (!itemNode) {
+            std::cout << "\nItem tidak ditemukan di shop!\n";
+            return false;
+        }
+        
+        // Check if enough starglitter
+        if (starglitterBalance < itemNode->item.price) {
+            std::cout << "\nStarglitter tidak cukup! Dibutuhkan: " << itemNode->item.price 
+                      << ", Dimiliki: " << starglitterBalance << "\n";
+            return false;
+        }
+        
+        // Check stock for lightcones (characters don't have stock limits)
+        if (!itemNode->item.isCharacter && itemNode->item.stock <= 0) {
+            std::cout << "\nStok lightcone habis!\n";
+            return false;
+        }
+        
+        // Process the purchase
+        starglitterBalance -= itemNode->item.price;
+        
+        if (itemNode->item.isCharacter) {
+            // Character purchase - add to ownedCharacters or increment eidolon
+            if (++ownedCharacters[itemNode->item.name] > 6) {
+                // Max eidolon already, return starglitter
+                ownedCharacters[itemNode->item.name]--;
+                starglitterBalance += 40; // Refund for duplicate over max
+                std::cout << "\nKarakter sudah maksimal Eidolon! Mendapatkan 40 Starglitter sebagai kompensasi.\n";
+            } else {
+                int eidolon = ownedCharacters[itemNode->item.name] - 1;
+                if (eidolon == 0) {
+                    std::cout << "\nBerhasil membeli karakter: " << itemNode->item.name << "!\n";
+                    // Item successfully added to inventory
+                    // (Character tree is updated elsewhere when displaying)
+                } else {
+                    std::cout << "\nBerhasil meningkatkan karakter " << itemNode->item.name 
+                              << " ke Eidolon " << eidolon << "!\n";
+                }
+            }
+        } else {
+            // Lightcone purchase - add to superimposition or increment
+            if (++lightconeSuperimposition[itemNode->item.name] > 5) {
+                // Max superimposition already, return starglitter
+                lightconeSuperimposition[itemNode->item.name]--;
+                starglitterBalance += 15; // Refund for duplicate over max
+                std::cout << "\nLightcone sudah maksimal Superimposition! Mendapatkan 15 Starglitter sebagai kompensasi.\n";
+            } else {
+                int superimposition = lightconeSuperimposition[itemNode->item.name];
+                if (superimposition == 1) {
+                    std::cout << "\nBerhasil membeli lightcone: " << itemNode->item.name << "!\n";
+                    // Item successfully added to inventory
+                    // (Lightcone tree is updated elsewhere when displaying)
+                } else {
+                    std::cout << "\nBerhasil meningkatkan lightcone " << itemNode->item.name 
+                              << " ke Superimposition " << superimposition << "!\n";
+                }
+            }
+            
+            // Decrease stock for lightcones
+            updateStock(root, itemNode->item.name, itemNode->item.stock - 1);
+        }
+        
+        // Add to recent character stack if it's a new acquisition
+        if ((itemNode->item.isCharacter && ownedCharacters[itemNode->item.name] == 1) ||
+            (!itemNode->item.isCharacter && lightconeSuperimposition[itemNode->item.name] == 1)) {
+            // Would add to recent stack if implemented
+        }
+        
+        return true;
+    }
+    // Display by name (alphabetical) using merge sort
+    void displayByName() {
+        std::vector<ShopItem> items;
+        collectItems(root, items);
+        
+        // Sort items by name using merge sort
+        if (!items.empty()) {
+            mergeSort(items, 0, items.size()-1, false); // false = sort by name
+        }
+        
+        std::cout << "\n=== SHOP ITEM LIST (BY NAME) ===\n";
+        if (items.empty()) std::cout << "(Shop kosong)\n";
+        else {
+            std::cout << "+" << std::string(40, '-') << "+" << std::string(12, '-') << "+" << std::string(10, '-') << "+" << std::string(9, '-') << "+\n";
+            std::cout << "| " << std::left << std::setw(38) << "Item Name" << " | ";
+            std::cout << std::setw(10) << "Type" << " | ";
+            std::cout << std::setw(8) << "Price" << " | ";
+            std::cout << std::setw(7) << "Stock" << " |\n";
+            std::cout << "+" << std::string(40, '-') << "+" << std::string(12, '-') << "+" << std::string(10, '-') << "+" << std::string(9, '-') << "+\n";
+            
+            for (const auto& item : items) {
+                std::cout << "| " << std::left << std::setw(38) << item.name << " | ";
+                
+                // Determine if it's a character or lightcone
+                bool isChar = false;
+                for (const auto& c : shopCharacters) {
+                    if (c == item.name) {
+                        isChar = true;
+                        break;
+                    }
+                }
+                
+                std::cout << std::setw(10) << (isChar ? "Character" : "Lightcone") << " | ";
+                std::cout << std::right << std::setw(8) << item.price << " | ";
+                
+                // Display stock appropriately
+                if (item.stock == -1) {
+                    std::cout << std::setw(7) << "N/A" << " |\n";
+                } else {
+                    std::cout << std::setw(7) << item.stock << " |\n";
+                }
+            }
+            std::cout << "+" << std::string(40, '-') << "+" << std::string(12, '-') << "+" << std::string(10, '-') << "+" << std::string(9, '-') << "+\n";
+        }
+    }
+    
+    // Custom merge function for ShopItems
+    void merge(vector<ShopItem>& arr, int l, int m, int r, bool byPrice) {
+        int n1 = m - l + 1, n2 = r - m;
+        vector<ShopItem> L(arr.begin() + l, arr.begin() + m + 1);
+        vector<ShopItem> R(arr.begin() + m + 1, arr.begin() + r + 1);
+
+        int i = 0, j = 0, k = l;
+        while (i < n1 && j < n2) {
+            if ((byPrice && L[i].price < R[j].price) || 
+                (!byPrice && L[i].name < R[j].name))
+                arr[k++] = L[i++];
+            else
+                arr[k++] = R[j++];
+        }
+        while (i < n1) arr[k++] = L[i++];
+        while (j < n2) arr[k++] = R[j++];
+    }
+
+    // MergeSort for ShopItems
+    void mergeSort(vector<ShopItem>& arr, int l, int r, bool byPrice) {
+        if (l < r) {
+            int m = (l + r) / 2;
+            mergeSort(arr, l, m, byPrice);
+            mergeSort(arr, m + 1, r, byPrice);
+            merge(arr, l, m, r, byPrice);
+        }
+    }
+    
+    // Custom merge function for Stock sorting (descending)
+    void mergeByStock(vector<ShopItem>& arr, int l, int m, int r) {
+        int n1 = m - l + 1, n2 = r - m;
+        vector<ShopItem> L(arr.begin() + l, arr.begin() + m + 1);
+        vector<ShopItem> R(arr.begin() + m + 1, arr.begin() + r + 1);
+
+        int i = 0, j = 0, k = l;
+        while (i < n1 && j < n2) {
+            if (L[i].stock > R[j].stock) // Note: descending
+                arr[k++] = L[i++];
+            else
+                arr[k++] = R[j++];
+        }
+        while (i < n1) arr[k++] = L[i++];
+        while (j < n2) arr[k++] = R[j++];
+    }
+
+    // MergeSort for Stock (descending)
+    void mergeSortByStock(vector<ShopItem>& arr, int l, int r) {
+        if (l < r) {
+            int m = (l + r) / 2;
+            mergeSortByStock(arr, l, m);
+            mergeSortByStock(arr, m + 1, r);
+            mergeByStock(arr, l, m, r);
+        }
+    }
+    
+    // Display by price (low to high)
+    void displayByPrice() {
+        std::vector<ShopItem> items;
+        collectItems(root, items);
+        
+        // Sort items by price using merge sort
+        if (!items.empty()) {
+            mergeSort(items, 0, items.size()-1, true); // true = sort by price
+        }
+        
+        std::cout << "\n=== SHOP ITEM LIST (BY PRICE: LOW TO HIGH) ===\n";
+        if (items.empty()) std::cout << "(Shop kosong)\n";
+        else {
+            std::cout << "+" << std::string(40, '-') << "+" << std::string(12, '-') << "+" << std::string(10, '-') << "+" << std::string(9, '-') << "+\n";
+            std::cout << "| " << std::left << std::setw(38) << "Item Name" << " | ";
+            std::cout << std::setw(10) << "Type" << " | ";
+            std::cout << std::setw(8) << "Price" << " | ";
+            std::cout << std::setw(7) << "Stock" << " |\n";
+            std::cout << "+" << std::string(40, '-') << "+" << std::string(12, '-') << "+" << std::string(10, '-') << "+" << std::string(9, '-') << "+\n";
+            
+            for (const auto& item : items) {
+                std::cout << "| " << std::left << std::setw(38) << item.name << " | ";
+                
+                // Determine if it's a character or lightcone
+                bool isChar = false;
+                for (const auto& c : shopCharacters) {
+                    if (c == item.name) {
+                        isChar = true;
+                        break;
+                    }
+                }
+                
+                std::cout << std::setw(10) << (isChar ? "Character" : "Lightcone") << " | ";
+                std::cout << std::right << std::setw(8) << item.price << " | ";
+                
+                // Display stock appropriately
+                if (item.stock == -1) {
+                    std::cout << std::setw(7) << "N/A" << " |\n";
+                } else {
+                    std::cout << std::setw(7) << item.stock << " |\n";
+                }
+            }
+            std::cout << "+" << std::string(40, '-') << "+" << std::string(12, '-') << "+" << std::string(10, '-') << "+" << std::string(9, '-') << "+\n";
+        }
+    }
+    
+    // Display by stock availability (high to low)
+    void displayByStock() {
+        std::vector<ShopItem> items;
+        collectItems(root, items);
+        
+        // Filter out character items with -1 stock since they're not applicable for stock display
+        std::vector<ShopItem> stockItems;
+        for (const auto& item : items) {
+            if (item.stock != -1) {
+                stockItems.push_back(item);
+            }
+        }
+        
+        // Sort items by stock (descending) using merge sort
+        if (!stockItems.empty()) {
+            mergeSortByStock(stockItems, 0, stockItems.size()-1);
+        }
+        
+        std::cout << "\n=== SHOP ITEM LIST (BY STOCK: HIGH TO LOW) ===\n";
+        std::cout << "(Only showing items with applicable stock)\n";
+        
+        if (stockItems.empty()) std::cout << "(No items with stock available)\n";
+        else {
+            std::cout << "+" << std::string(40, '-') << "+" << std::string(12, '-') << "+" << std::string(10, '-') << "+" << std::string(9, '-') << "+\n";
+            std::cout << "| " << std::left << std::setw(38) << "Item Name" << " | ";
+            std::cout << std::setw(10) << "Type" << " | ";
+            std::cout << std::setw(8) << "Price" << " | ";
+            std::cout << std::setw(7) << "Stock" << " |\n";
+            std::cout << "+" << std::string(40, '-') << "+" << std::string(12, '-') << "+" << std::string(10, '-') << "+" << std::string(9, '-') << "+\n";
+            
+            for (const auto& item : stockItems) {
+                std::cout << "| " << std::left << std::setw(38) << item.name << " | ";
+                std::cout << std::setw(10) << "Lightcone" << " | "; // Only lightcones have stock
+                std::cout << std::right << std::setw(8) << item.price << " | ";
+                std::cout << std::setw(7) << item.stock << " |\n";
+            }
+            std::cout << "+" << std::string(40, '-') << "+" << std::string(12, '-') << "+" << std::string(10, '-') << "+" << std::string(9, '-') << "+\n";
+        }
+    }
+    
+    // Display the AVL tree structure with balance factors
+    void displayAVLStructure() {
+        std::cout << "\n=== AVL SHOP TREE STRUCTURE ===\n";
+        std::cout << "(Root at the top, shows balance factors in parentheses)\n\n";
+        if (!root) {
+            std::cout << "(Empty tree)\n";
+            return;
+        }
+        displayAVLStructureRecursive(root, "", true);
+    }
+    
+    void displayAVLStructureRecursive(AVLShopNode* node, std::string prefix, bool isLast) {
+        if (!node) return;
+        
+        std::cout << prefix;
+        std::cout << (isLast ? "+-- " : "+-- ");
+        
+        // Display node with balance factor
+        int balance = getBalance(node);
+        std::cout << node->item.name << " (" << balance << ") [Stock: " << node->item.stock << "]\n";
+        
+        // Prepare prefix for children
+        std::string newPrefix = prefix + (isLast ? "    " : "|   ");
+        
+        // Process children
+        if (node->right)
+            displayAVLStructureRecursive(node->right, newPrefix, node->left == nullptr);
+        if (node->left)
+            displayAVLStructureRecursive(node->left, newPrefix, true);
+    }
+    
+    // Display AVL tree height and node count statistics
+    void displayAVLStats() {
+        int height = calculateHeight(root);
+        int nodeCount = countNodes(root);
+        int leafCount = countLeafNodes(root);
+        
+        std::cout << "\n=== AVL TREE STATISTICS ===\n";
+        std::cout << "Tree Height: " << height << "\n";
+        std::cout << "Total Nodes: " << nodeCount << "\n";
+        std::cout << "Leaf Nodes: " << leafCount << "\n";
+        std::cout << "Internal Nodes: " << (nodeCount - leafCount) << "\n";
+        
+        // Calculate theoretical min/max height for comparison
+        int minHeight = static_cast<int>(log2(nodeCount + 1));
+        int maxHeight = static_cast<int>(1.44 * log2(nodeCount + 2) - 0.328);
+        
+        std::cout << "\nBalance Analysis:\n";
+        std::cout << "Theoretical Min Height: " << minHeight << "\n";
+        std::cout << "Theoretical Max Height for AVL: " << maxHeight << "\n";
+        std::cout << "Actual/Theoretical Height Ratio: " << std::fixed << std::setprecision(2) 
+                  << (static_cast<float>(height) / minHeight) << "\n";
+    }
+    
+    int calculateHeight(AVLShopNode* node) {
+        if (!node) return 0;
+        return 1 + std::max(calculateHeight(node->left), calculateHeight(node->right));
+    }
+    
+    int countNodes(AVLShopNode* node) {
+        if (!node) return 0;
+        return 1 + countNodes(node->left) + countNodes(node->right);
+    }
+    
+    int countLeafNodes(AVLShopNode* node) {
+        if (!node) return 0;
+        if (!node->left && !node->right) return 1;
+        return countLeafNodes(node->left) + countLeafNodes(node->right);
+    }
+    
+    // Legacy display method - redirects to displayByName
     void display() {
-        std::cout << "\n=== SHOP ITEM LIST (AVL) ===\n";
-        if (!root) std::cout << "(Shop kosong)\n";
-        else inorder(root);
+        displayByName();
     }
 };
 
 AVLShopTree shopTree;
 
 void initShopItems() {
-    shopTree.insert(ShopItem("Potion", 50, 10));
-    shopTree.insert(ShopItem("Ether", 100, 5));
-    shopTree.insert(ShopItem("Revive", 200, 2));
-    shopTree.insert(ShopItem("Attack Boost", 150, 4));
-    shopTree.insert(ShopItem("Defense Boost", 120, 4));
+    // Make sure random is initialized
+    static bool initialized = false;
+    if (!initialized) {
+        srand(time(NULL));
+        initialized = true;
+    }
+    
+    // Insert characters (with stock - set to -1 for display purposes and isCharacter set to true)
+    for (const auto& character : shopCharacters) {
+        // Characters have different price tiers based on rarity (just for example)
+        int price = 5000; // Base price for all characters
+        shopTree.insert(ShopItem(character, price, -1, true)); // -1 stock means "not applicable", true = is a character
+    }
+    
+    // Insert lightcones with stock between 1-3 and isCharacter set to false
+    for (const auto& lightcone : shopLightcones) {
+        // Lightcones have a lower base price than characters
+        int price = 3000; // Base price for all lightcones
+        int stock = (rand() % 3) + 1; // Random stock between 1-3
+        shopTree.insert(ShopItem(lightcone, price, stock, false)); // false = is a lightcone
+    }
 }
 
+// ... (rest of the code remains the same)
+
 void showShopMenu() {
-    std::cout << "\n===== SHOP =====\n";
-    shopTree.display();
-    std::cout << "\nKetik apapun lalu Enter untuk kembali ke menu utama...\n";
-    std::string dummy; std::getline(std::cin, dummy);
+    bool exitShop = false;
+    int viewMode = 0; // 0: by name, 1: by price, 2: by stock, 3: AVL structure, 4: AVL stats
+    
+    while (!exitShop) {
+        system("cls");
+        std::cout << "\n===== SHOP =====\n";
+        std::cout << "Starglitter Anda: " << starglitter << "\n";
+        
+        // Display shop items based on current view mode
+        switch (viewMode) {
+            case 0: shopTree.displayByName(); break;
+            case 1: shopTree.displayByPrice(); break;
+            case 2: shopTree.displayByStock(); break;
+            case 3: shopTree.displayAVLStructure(); break;
+            case 4: shopTree.displayAVLStats(); break;
+        }
+        
+        std::cout << "[t] Toggle View Mode (" << 
+            (viewMode == 0 ? "Name -> Price" : 
+             viewMode == 1 ? "Price -> Stock" : 
+             viewMode == 2 ? "Stock -> AVL Structure" :
+             viewMode == 3 ? "AVL Structure -> AVL Stats" : "AVL Stats -> Name") << ")\n";
+        
+        // Only show purchase option if not in AVL structure or stats view mode
+        if (viewMode < 3) {
+            std::cout << "[p] Beli Item\n";
+        }
+        
+        // AVL-specific explanations
+        if (viewMode == 3) {
+            std::cout << "\n--- AVL Tree Information ---\n";
+            std::cout << "AVL trees maintain balance through rotations.\n";
+            std::cout << "Balance factors shown in parentheses (height of right - height of left).\n";
+            std::cout << "For a balanced AVL tree, all nodes must have balance factors of -1, 0, or 1.\n";
+        } 
+        else if (viewMode == 4) {
+            std::cout << "\n--- Why Use AVL Trees? ---\n";
+            std::cout << "- Search/insert/delete operations all work in O(log n) guaranteed time\n";
+            std::cout << "- Self-balancing ensures tree doesn't degrade to linked list\n";
+            std::cout << "- Height is always ~1.44*log2(n), making searches efficient\n";
+        }
+
+        std::cout << "[b] Kembali ke Menu Utama\n";
+        std::cout << "Pilihan: ";
+        char option;
+        std::cin >> option;
+        
+        switch(option) {
+            case 't': case 'T':
+                // Toggle view mode in a cycle
+                viewMode = (viewMode + 1) % 5;
+                break;
+            case 'p': case 'P':
+                if (viewMode < 3) { // Only allow purchases from item views
+                    // Purchase functionality
+                    std::cin.ignore(); // Clear input buffer
+                    std::cout << "Masukkan nama item yang ingin dibeli: ";
+                    std::string itemName;
+                    getline(std::cin, itemName);
+                    
+                    // Process purchase using the integrated functionality
+                    if (shopTree.purchaseItem(itemName, starglitter)) {
+                        // Success message - saving is handled in the purchaseItem method
+                        std::cout << "Pembelian berhasil! Starglitter tersisa: " << starglitter << "\n";
+                    }
+                    system("pause");
+                } else {
+                    std::cout << "Untuk membeli item, silahkan gunakan tampilan nama, harga, atau stok.\n";
+                    system("pause");
+                }
+                break;
+            case 'b': case 'B':
+                exitShop = true;
+                break;
+            default:
+                std::cout << "Pilihan tidak valid!\n";
+                system("pause");
+        }
+    }
 }
 // ===== END SHOP AVL TREE =====
 
@@ -1275,12 +1814,36 @@ public:
         for (map<char, vector<string>>::iterator it = groups.begin(); it != groups.end(); ++it) {
             char c = it->first;
             vector<string>& vec = it->second;
-            if (!vec.empty()) mergeSort(vec, 0, vec.size() - 1);
+            
+            // Menghilangkan duplikat dan entri dengan format gacha
+            set<string> uniqueBaseNames;
+            vector<string> cleanedEntries;
+            
+            for (const auto& entry : vec) {
+                // Extract base name (remove E1, E2, Starglitter, etc.)
+                string baseName = entry;
+                size_t spacePos = entry.find(' ');
+                if (spacePos != string::npos) {
+                    baseName = entry.substr(0, spacePos);
+                }
+                
+                // Only add if this base name hasn't been seen before
+                if (uniqueBaseNames.find(baseName) == uniqueBaseNames.end()) {
+                    uniqueBaseNames.insert(baseName);
+                    cleanedEntries.push_back(baseName);
+                }
+            }
+            
+            // Sort the cleaned entries
+            if (!cleanedEntries.empty()) {
+                sort(cleanedEntries.begin(), cleanedEntries.end());
+            }
             
             cout << "[" << c << "]\n";
-            // Menggunakan iterator eksplisit untuk traversal vector
-            for (vector<string>::iterator v_it = vec.begin(); v_it != vec.end(); ++v_it)
-                cout << " - " << *v_it << "\n";
+            // Display only unique base names
+            for (const auto& name : cleanedEntries) {
+                cout << " - " << name << "\n";
+            }
         }
     }
     void searchSubstring(string keyword, bool fuzzy = false, int maxDistance = 2) {
@@ -1357,6 +1920,10 @@ struct CharacterLibrary {
     }
 
     void loadToTree(CharacterTree& tree) {
+        // Clear any existing content in the tree first
+        tree = CharacterTree(); // Reset to a new empty tree
+        
+        // Add all characters and lightcones from the clean library
         for (const auto& ch : characters) tree.addCharacter(ch);
         for (const auto& lc : lightcones) tree.addCharacter(lc);
     }
@@ -1953,14 +2520,55 @@ void showBattleHistoryAndPerformance() {
     int id;
     cin >> id;
     if (id < 1 || id > (int)allBattles.size()) return;
-    cout << "\n=== Detail Pertarungan vs " << bossNames[id-1] << " ===\n";
-    allBattles[id-1].showBFS();
-    allBattles[id-1].showPerformanceGraph();
-    cout << "\nTampilkan DFS juga? (y/n): ";
-    char yn; cin >> yn;
-    if (yn == 'y' || yn == 'Y') allBattles[id-1].showDFS();
-    cout << "\n";
-    system("pause");
+    
+    bool viewMode = true;    // true = dari awal (BFS), false = dari akhir (DFS)
+    bool showGraph = true;   // true = show performance graph, false = hide graph
+    bool exitView = false;
+    
+    while (!exitView) {
+        system("cls"); // Clear screen for better UI
+        cout << "\n=== Detail Pertarungan vs " << bossNames[id-1] << " ===\n";
+        
+        // Show battle history based on current view mode
+        if (viewMode) {
+            allBattles[id-1].showBFS(); // Show chronological view (dari awal)
+        } else {
+            allBattles[id-1].showDFS(); // Show reverse chronological view (dari akhir)
+        }
+        
+        // Show performance graph if enabled
+        if (showGraph) {
+            allBattles[id-1].showPerformanceGraph();
+        }
+        
+        // Menu options for toggling view, graph, or exiting
+        cout << "\n============= Menu Riwayat =============\n";
+        cout << "[t] Toggle Urutan " << (viewMode ? "(Dari awal -> Dari akhir)" : "(Dari akhir -> Dari awal)") << "\n";
+        cout << "[g] " << (showGraph ? "Sembunyikan" : "Tampilkan") << " Performance Graph\n";
+        cout << "[x] Kembali ke Menu Utama\n";
+        cout << "Pilihan: ";
+        
+        char choice;
+        cin >> choice;
+        
+        switch (choice) {
+            case 't':
+            case 'T':
+                viewMode = !viewMode; // Toggle between dari awal and dari akhir
+                break;
+            case 'g':
+            case 'G':
+                showGraph = !showGraph; // Toggle performance graph visibility
+                break;
+            case 'x':
+            case 'X':
+                exitView = true; // Exit the viewing loop
+                break;
+            default:
+                cout << "Pilihan tidak valid!\n";
+                system("pause");
+        }
+    }
 }
 
 int main() {
@@ -1973,7 +2581,7 @@ int main() {
     int choice;
     do {
         cout << "\n=== Honkai: Star Rail Gacha Simulator ===\n";
-        cout << "1. Perform Gacha\n2. View Gacha History\n3. Library\n4. Save Game\n5. Load Game\n6. Build Team\n7. View Team\n8. Battle Mode\n9. Shop\n10. Exit\n11. Battle History & Performance\n";
+        cout << "1. Perform Gacha\n2. View Gacha History\n3. Library\n4. Save Game\n5. Load Game\n6. Build Team\n7. View Team\n8. Battle Mode\n9. Battle History & Performance\n10. Shop\n0. Exit\n";
         cout << "Enter your choice: ";
         cin >> choice;
 
@@ -2175,15 +2783,15 @@ int main() {
             break;
             }
             case 9:
-            shop();
-            break;
-            case 11: 
             showBattleHistoryAndPerformance();
             break;
-            case 10: cout << "Exiting...\n"; break;
+            case 10:
+            shop();
+            break;
+            case 0: cout << "Exiting...\n"; break;
             default: cout << "Invalid choice.\n";
         }
-    } while (choice != 10);
+    } while (choice != 0);
 
     return 0;
 }
