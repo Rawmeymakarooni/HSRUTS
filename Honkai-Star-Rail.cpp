@@ -1406,6 +1406,7 @@ void showCharacterShop() {
         std::cout << "Pilihan: ";
         char option;
         std::cin >> option;
+        cin.ignore(numeric_limits<streamsize>::max(), '\n'); 
         
         switch(option) {
             case 't': case 'T':
@@ -1499,6 +1500,7 @@ void showLightconeShop() {
         std::cout << "Pilihan: ";
         char option;
         std::cin >> option;
+        cin.ignore(numeric_limits<streamsize>::max(), '\n'); 
         
         switch(option) {
             case 't': case 'T':
@@ -2777,6 +2779,8 @@ void showBattleHistoryAndPerformance() {
     cout << "\nMasukkan ID riwayat battle yang ingin dilihat (1-" << allBattles.size() << ", 0 untuk batal): ";
     int id;
     cin >> id;
+    cin.ignore(numeric_limits<streamsize>::max(), '\n'); 
+
     if (id < 1 || id > (int)allBattles.size()) return;
     
     bool viewMode = true;    // true = dari awal (BFS), false = dari akhir (DFS)
