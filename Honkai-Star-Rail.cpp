@@ -12,13 +12,11 @@
 #include <fstream>
 #include <regex>
 #include <cmath>
-#include <stdexcept>
 #include <queue>
 #include <set>
 #include <limits>
-
 #include "AVLCharacterTree.h"
-#include <stdexcept> // Tambahan untuk Exception Handling
+#include <stdexcept> 
 #pragma comment(lib, "winmm.lib")
 
 using namespace std;
@@ -75,6 +73,16 @@ int pityCounter5Standard = 0, pityCounter4Standard = 0;
 int pityCounter5Lightcone = 0, pityCounter4Lightcone = 0;
 static bool guaranteedLightconeNext = false;
 
+int getValidatedChoice(int min, int max);
+int getChoice1to2();
+int getChoice0to3();
+int getChoice1to3();
+int getChoice1to4();
+char getCharNS();
+char getYesOrNo();
+char getCommand();
+vector<int> getFourValidIndexes(int maxIndex);
+
 // Deklarasi struktur data untuk battle history
 // ====== BFS & DFS: Riwayat Battle ======
 struct BattleAction {
@@ -88,7 +96,6 @@ struct BattleAction {
         : actor(actor), target(target), action(action), damage(damage), next(nullptr) {}
 };
 
-// ====== BFS & DFS: Riwayat Battle ======
 class BattleHistory {
 public:
     string bossName;
@@ -687,7 +694,7 @@ void battle(vector<string>& teamNames) {
 
         int choice;
         cout << "Pilih bos (0-" << bosses.size() << "): ";
-        cin >> choice;
+        choice = getChoice0to3();
 
         if (choice == 0) return;
         if (choice >= 1 && choice <= bosses.size()) {
@@ -695,7 +702,7 @@ void battle(vector<string>& teamNames) {
             if (bossDefeated[bossName]) {
                 cout << "Kamu sudah mengalahkan " << bossName << ". Ingin bertarung lagi? (y/n): ";
                 char again;
-                cin >> again;
+                again = getYesOrNo();
                 if (again == 'y' || again == 'Y') break;
                 else continue;
             } else {
@@ -753,7 +760,7 @@ void battle(vector<string>& teamNames) {
         cout << "1. Basic Attack\n2. Skill\n3. Ultimate (" << ch.skillCount << "/3)\n";
         int input;
         cout << "Pilih aksi: ";
-        cin >> input;
+        input = getChoice1to3();
 
         switch (input) {
             case 1: {
@@ -834,10 +841,6 @@ void battle(vector<string>& teamNames) {
         cout << "\nTim kamu kalah...\n";
     }
 }
-
-// ... (sisa kode tetap sama)
-
-// ===== Circular Linked List =====
 
 // ===== SHOP AVL TREE SEDERHANA =====
 struct ShopItem {
@@ -1020,10 +1023,8 @@ public:
             updateStock(root, itemNode->item.name, itemNode->item.stock - 1);
         }
         
-        // Add to recent character stack if it's a new acquisition
         if ((itemNode->item.isCharacter && ownedCharacters[itemNode->item.name] == 1) ||
             (!itemNode->item.isCharacter && lightconeSuperimposition[itemNode->item.name] == 1)) {
-            // Would add to recent stack if implemented
         }
         
         return true;
@@ -1319,7 +1320,6 @@ void showLightconeShop();
 
 // Main shop menu function
 void showShopMenu() {
-    // Initialize shop items to ensure shop is populated
     initShopItems();
     
     bool exitShop = false;
@@ -1334,7 +1334,7 @@ void showShopMenu() {
         std::cout << "Pilihan: ";
         
         int menuChoice;
-        std::cin >> menuChoice;
+        menuChoice = getChoice1to3();
         
         switch(menuChoice) {
             case 1:
@@ -1406,6 +1406,7 @@ void showCharacterShop() {
         std::cout << "Pilihan: ";
         char option;
         std::cin >> option;
+        cin.ignore(numeric_limits<streamsize>::max(), '\n'); 
         
         switch(option) {
             case 't': case 'T':
@@ -1499,6 +1500,7 @@ void showLightconeShop() {
         std::cout << "Pilihan: ";
         char option;
         std::cin >> option;
+        cin.ignore(numeric_limits<streamsize>::max(), '\n'); 
         
         switch(option) {
             case 't': case 'T':
@@ -1535,10 +1537,7 @@ void showLightconeShop() {
         }
     }
 }
-// ===== END SHOP AVL TREE =====
 
-
-// Circular Linked List
 // ====== Circular Linked List: Cycling Karakter ======
 struct CircleNode {
     string character;
@@ -1559,14 +1558,6 @@ public:
         temp->next = head;
     }
 
-    void display(int count) {
-        CircleNode* temp = head;
-        for (int i = 0; i < count; i++) {
-            cout << temp->character << " -> ";
-            temp = temp->next;
-        }
-        cout << "...\n";
-    }
 };
 
 string cleanName(const string& rawName) {
@@ -1646,8 +1637,7 @@ class GachaHistory {
         cout << "[n] Next  [p] Previous  [f] First  [l] Last  [s] Search  [c] Change to " 
              << (title == "Character" ? "Lightcone" : "Character") << "  [x] Exit to Menu\n";
         cout << "Pilihan: ";
-        char cmd;
-        cin >> cmd;
+        char cmd = getCommand();
         cin.ignore();
 
         if (cmd == 'n' && page < totalPages - 1) page++;
@@ -2186,7 +2176,7 @@ void selectBanner() {
     cout << "2. Standard Banner\n";
     cout << "3. Rate-Up Lightcone Banner (Castorice)\n";
     int choice;
-    cin >> choice;
+    choice = getChoice1to3();       
     switch (choice) {
         case 1: currentBanner = RATE_UP; break;
         case 2: currentBanner = STANDARD; break;
@@ -2228,14 +2218,10 @@ void manageTeam() {
 
     cout << "\nMasukkan nomor karakter untuk tim (maksimal 4, pisah dengan spasi): ";
     team.clear();
-    int pick;
-    for (int j = 0; j < 4 && cin >> pick; ++j) {
-        if (pick >= 1 && pick <= list.size())
-            team.push_back(list[pick - 1]);
-        else
-            cout << "Nomor tidak valid.\n";
+    vector<int> picks = getFourValidIndexes(list.size());
+    for (int i : picks) {
+        team.push_back(list[i - 1]);  
     }
-    cin.clear(); cin.ignore(10000, '\n');
 }
 
 
@@ -2257,12 +2243,12 @@ void displayTeam() {
     while (true) {
         cout << "\n1. Lihat detail karakter\n2. Kembali ke menu\n";
         int opsi;
-        cin >> opsi;
+        opsi = getChoice1to2();
         if (opsi == 2) break;
         if (opsi == 1) {
             cout << "\nLihat detail siapa? 1-" << team.size() << "\n";
             int idx;
-            cin >> idx;
+            idx = getChoice1to4();  
             if (idx < 1 || idx > team.size()) {
                 cout << "Pilihan tidak valid.\n";
                 continue;
@@ -2292,39 +2278,42 @@ void displayTeam() {
             // Opsi ganti / hapus lightcone
             cout << "\n1. Ganti/tambahkan lightcone\n2. Unequip lightcone\n3. Kembali\n";
             int pilihan;
-            cin >> pilihan;
+            pilihan = getChoice1to3();  
             if (pilihan == 1) {
-            cout << "\n== Daftar Lightcone ==\n";
+                cout << "\n== Daftar Lightcone yang Dimiliki ==\n";
                 int num = 1;
                 vector<string> allLightcones;
 
-            // Tambahkan rate-up lightcone di depan
-            allLightcones.push_back(rateUpLightcones);
+                // Hanya lightcone yang dimiliki (superimposition >= 1)
+                for (const auto& pair : lightconeSuperimposition) {
+                    if (pair.second > 0) {
+                        allLightcones.push_back(pair.first);
+                    }
+                }
 
-            // Lalu masukkan list lightcones lainnya
-            allLightcones.insert(allLightcones.end(), lightcones.begin(), lightcones.end());
-            allLightcones.insert(allLightcones.end(), standardLightcones.begin(), standardLightcones.end());
-            allLightcones.insert(allLightcones.end(), threeStarLightcones.begin(), threeStarLightcones.end());
+                if (allLightcones.empty()) {
+                    cout << "Kamu tidak memiliki lightcone.\n";
+                } else {
+                    // Tampilkan daftar dengan superimposition level
+                    for (auto& lc : allLightcones) {
+                        string lcDisplay = lc;
+                        int sup = lightconeSuperimposition[lc];
+                        if (sup > 1) lcDisplay += " S" + to_string(sup);
+                        cout << num++ << ". " << lcDisplay << "\n";
+                    }
 
-            // Tampilkan dengan superimposition level
-            for (auto& lc : allLightcones) {
-                string lcDisplay = lc;
-                int sup = lightconeSuperimposition[lc];
-                if (sup > 1) lcDisplay += " S" + to_string(sup);
-                cout << num++ << ". " << lcDisplay << "\n";
-            }
-
-            cout << "\nPilih lightcone untuk ditambahkan: ";
-            int lcChoice;
-            cin >> lcChoice;
-            if (lcChoice >= 1 && lcChoice <= allLightcones.size()) {
-                equippedLightcones[nama] = allLightcones[lcChoice - 1];
-                cout << "Lightcone berhasil dipasang!\n";
-            } else {
-                cout << "Pilihan tidak valid.\n";
-            }
-            }
-            else if (pilihan == 2) {
+                    cout << "\nPilih lightcone untuk ditambahkan: ";
+                    int lcChoice;
+                    cin >> lcChoice;
+                    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+                    if (lcChoice >= 1 && lcChoice <= allLightcones.size()) {
+                        equippedLightcones[nama] = allLightcones[lcChoice - 1];
+                        cout << "Lightcone berhasil dipasang!\n";
+                    } else {
+                        cout << "Pilihan tidak valid.\n";
+                    }
+                }
+            } else if (pilihan == 2) {
                 equippedLightcones.erase(nama);
                 cout << "Lightcone telah dihapus.\n";
             }
@@ -2343,28 +2332,40 @@ void saveGame() {
     try {
         ofstream out("save_data.txt");
         if (!out) throw runtime_error("Gagal membuka file untuk menyimpan.");
-        
-        out << starglitter << "\n"; 
+
+        // Currency
+        out << starglitter << "\n";
+
+        // Pity counters
         out << pityCounter5RateUp << " " << pityCounter4RateUp << "\n";
         out << pityCounter5Standard << " " << pityCounter4Standard << "\n";
         out << pityCounter5Lightcone << " " << pityCounter4Lightcone << "\n";
-        
+
+        // Team
         out << team.size() << "\n";
         for (const auto& ch : team) {
             out << ch << "\n";
         }
-        
-        size_t n = 0;
-        for (auto it = equippedLightcones.begin(); it != equippedLightcones.end(); ++it) {
-            if (!it->second.empty()) n++;
+
+        // Owned characters
+        out << ownedCharacters.size() << "\n";
+        for (const auto& [name, eid] : ownedCharacters) {
+            out << name << "|" << eid << "\n";
         }
-        out << n << "\n";
-        for (auto it = equippedLightcones.begin(); it != equippedLightcones.end(); ++it) {
-            if (!it->second.empty()) {
-                out << it->first << "\n" << it->second << "\n";
-            }
+
+        // Equipped lightcones
+        out << equippedLightcones.size() << "\n";
+        for (const auto& [nama, lc] : equippedLightcones) {
+            out << nama << "|" << lc << "\n";
         }
-        
+
+        // Superimposition levels
+        out << lightconeSuperimposition.size() << "\n";
+        for (const auto& [lcName, Slevel] : lightconeSuperimposition) {
+            out << lcName << "|" << Slevel << "\n";  // Changed to use | delimiter for consistency
+        }
+
+        // Battle history
         out << allBattles.size() << "\n";
         for (size_t i = 0; i < allBattles.size(); ++i) {
             out << bossNames[i] << "\n";
@@ -2372,11 +2373,12 @@ void saveGame() {
             out << nAksi << "\n";
             BattleAction* act = allBattles[i].head;
             while (act) {
-                out << act->actor << "\n" << act->target << "\n" << act->action << "\n" << act->damage << "\n";
+                out << act->actor << "\n" << act->target << "\n"
+                    << act->action << "\n" << act->damage << "\n";
                 act = act->next;
             }
         }
-        
+
         out.close();
         cout << "Game berhasil disimpan.\n";
     } catch (const exception& e) {
@@ -2388,88 +2390,207 @@ void loadGame() {
     try {
         ifstream in("save_data.txt");
         if (!in) throw runtime_error("File save tidak ditemukan.");
-        
-        // 1) Clear all existing state
+
+        // Clear all data
         team.clear();
         equippedLightcones.clear();
         allBattles.clear();
         bossNames.clear();
-        
-        // 2) Read starglitter & pity counters
-        in >> starglitter;
-        if (in.fail()) throw runtime_error("Format file rusak (starglitter).");
-        
-        in >> pityCounter5RateUp >> pityCounter4RateUp;
-        in >> pityCounter5Standard >> pityCounter4Standard;
-        in >> pityCounter5Lightcone >> pityCounter4Lightcone;
-        
-        // 3) Read team
-        int teamSize; 
-        in >> teamSize;
-        if (in.fail() || teamSize < 0) throw runtime_error("Format file rusak (team size).");
-        
+        ownedCharacters.clear();
+        lightconeSuperimposition.clear();
+
+        // Read currency
+        if (!(in >> starglitter)) {
+            throw runtime_error("Format file rusak (starglitter).");
+        }
+
+        // Read pity counters
+        if (!(in >> pityCounter5RateUp >> pityCounter4RateUp)) {
+            throw runtime_error("Format file rusak (pity rate-up).");
+        }
+        if (!(in >> pityCounter5Standard >> pityCounter4Standard)) {
+            throw runtime_error("Format file rusak (pity standard).");
+        }
+        if (!(in >> pityCounter5Lightcone >> pityCounter4Lightcone)) {
+            throw runtime_error("Format file rusak (pity lightcone).");
+        }
+
+        // Read team
+        int teamSize;
+        if (!(in >> teamSize) || teamSize < 0) {
+            throw runtime_error("Format file rusak (team size).");
+        }
         in.ignore(numeric_limits<streamsize>::max(), '\n');
+        
         for (int i = 0; i < teamSize; ++i) {
-            string line;
-            if (!getline(in, line) && i < teamSize - 1) {
-                throw runtime_error("Format file rusak (team entries).");
+            string member;
+            if (!getline(in, member)) {
+                throw runtime_error("Format file rusak (team member " + to_string(i) + ").");
             }
-            team.push_back(line);
+            team.push_back(member);
         }
-        
-        // 4) Read equipped lightcones
-        int lcCount;
-        in >> lcCount;
-        if (in.fail() || lcCount < 0) throw runtime_error("Format file rusak (lightcone count).");
-        
+
+        // Read owned characters
+        int ownedSize;
+        if (!(in >> ownedSize) || ownedSize < 0) {
+            throw runtime_error("Format file rusak (owned characters size).");
+        }
         in.ignore(numeric_limits<streamsize>::max(), '\n');
-        for (int i = 0; i < lcCount; ++i) {
-            string charName, lcName;
-            if (!getline(in, charName)) throw runtime_error("Format file rusak (lightcone char name).");
-            if (!getline(in, lcName)) throw runtime_error("Format file rusak (lightcone name).");
-            equippedLightcones[charName] = lcName;
-        }
         
-        // 5) Read battle histories
+        for (int i = 0; i < ownedSize; ++i) {
+            string line;
+            if (!getline(in, line)) {
+                throw runtime_error("Format file rusak (tidak bisa membaca owned character " + to_string(i) + ").");
+            }
+            
+            if (line.empty()) {
+                throw runtime_error("Format file rusak (owned character entry " + to_string(i) + " kosong).");
+            }
+            
+            size_t delim = line.find('|');
+            if (delim == string::npos) {
+                throw runtime_error("Format file rusak (delimiter '|' tidak ditemukan pada owned character " + to_string(i) + ": '" + line + "').");
+            }
+            if (delim == 0 || delim == line.length() - 1) {
+                throw runtime_error("Format file rusak (delimiter '|' di posisi tidak valid pada owned character " + to_string(i) + ": '" + line + "').");
+            }
+            
+            string name = line.substr(0, delim);
+            string eidStr = line.substr(delim + 1);
+            
+            try {
+                int eid = stoi(eidStr);
+                ownedCharacters[name] = eid;
+            } catch (const invalid_argument&) {
+                throw runtime_error("Format file rusak (eid tidak valid untuk character '" + name + "': '" + eidStr + "').");
+            } catch (const out_of_range&) {
+                throw runtime_error("Format file rusak (eid terlalu besar untuk character '" + name + "': '" + eidStr + "').");
+            }
+        }
+
+        // Read equipped lightcones
+        int eqSize;
+        if (!(in >> eqSize) || eqSize < 0) {
+            throw runtime_error("Format file rusak (equipped lightcones size).");
+        }
+        in.ignore(numeric_limits<streamsize>::max(), '\n');
+        
+        for (int i = 0; i < eqSize; ++i) {
+            string line;
+            if (!getline(in, line)) {
+                throw runtime_error("Format file rusak (tidak bisa membaca lightcone entry " + to_string(i) + ").");
+            }
+            
+            if (line.empty()) {
+                throw runtime_error("Format file rusak (lightcone entry " + to_string(i) + " kosong).");
+            }
+            
+            size_t delim = line.find('|');
+            if (delim == string::npos) {
+                throw runtime_error("Format file rusak (delimiter '|' tidak ditemukan pada entry " + to_string(i) + ": '" + line + "').");
+            }
+            if (delim == 0 || delim == line.length() - 1) {
+                throw runtime_error("Format file rusak (delimiter '|' di posisi tidak valid pada entry " + to_string(i) + ": '" + line + "').");
+            }
+            
+            string nama = line.substr(0, delim);
+            string lc = line.substr(delim + 1);
+            equippedLightcones[nama] = lc;
+        }
+
+        // Read lightcone superimposition
+        int supSize;
+        if (!(in >> supSize) || supSize < 0) {
+            throw runtime_error("Format file rusak (superimposition size).");
+        }
+        in.ignore(numeric_limits<streamsize>::max(), '\n');
+        
+        for (int i = 0; i < supSize; ++i) {
+            string line;
+            if (!getline(in, line)) {
+                throw runtime_error("Format file rusak (superimposition entry " + to_string(i) + ").");
+            }
+            
+            if (line.empty()) {
+                throw runtime_error("Format file rusak (superimposition entry " + to_string(i) + " kosong).");
+            }
+            
+            size_t delim = line.find('|');
+            if (delim == string::npos) {
+                throw runtime_error("Format file rusak (delimiter '|' tidak ditemukan pada superimposition " + to_string(i) + ").");
+            }
+            
+            string lcName = line.substr(0, delim);
+            string slevelStr = line.substr(delim + 1);
+            
+            try {
+                int slevel = stoi(slevelStr);
+                lightconeSuperimposition[lcName] = slevel;
+            } catch (const invalid_argument&) {
+                throw runtime_error("Format file rusak (superimposition level tidak valid: '" + slevelStr + "').");
+            }
+        }
+
+        // Read battle history
         int nBattles;
-        in >> nBattles;
-        if (in.fail() || nBattles < 0) throw runtime_error("Format file rusak (battle count).");
-        
+        if (!(in >> nBattles) || nBattles < 0) {
+            throw runtime_error("Format file rusak (battle count).");
+        }
         in.ignore(numeric_limits<streamsize>::max(), '\n');
+        
         for (int i = 0; i < nBattles; ++i) {
             string bossName;
-            if (!getline(in, bossName)) throw runtime_error("Format file rusak (boss name).");
+            if (!getline(in, bossName)) {
+                throw runtime_error("Format file rusak (boss name " + to_string(i) + ").");
+            }
             bossNames.push_back(bossName);
-            
+
             BattleHistory history;
             history.bossName = bossName;
-            
+
             int nActions;
-            in >> nActions;
-            if (in.fail() || nActions < 0) throw runtime_error("Format file rusak (action count).");
+            if (!(in >> nActions) || nActions < 0) {
+                throw runtime_error("Format file rusak (action count for battle " + to_string(i) + ").");
+            }
             in.ignore(numeric_limits<streamsize>::max(), '\n');
-            
+
             for (int j = 0; j < nActions; ++j) {
                 string actor, target, action;
                 int damage;
                 
-                if (!getline(in, actor)) throw runtime_error("Format file rusak (actor).");
-                if (!getline(in, target)) throw runtime_error("Format file rusak (target).");
-                if (!getline(in, action)) throw runtime_error("Format file rusak (action).");
+                if (!getline(in, actor) || !getline(in, target) || !getline(in, action)) {
+                    throw runtime_error("Format file rusak (action data " + to_string(j) + " in battle " + to_string(i) + ").");
+                }
                 
-                in >> damage;
-                if (in.fail()) throw runtime_error("Format file rusak (damage).");
+                if (!(in >> damage)) {
+                    throw runtime_error("Format file rusak (damage value " + to_string(j) + " in battle " + to_string(i) + ").");
+                }
                 in.ignore(numeric_limits<streamsize>::max(), '\n');
-                
+
                 history.addAction(actor, target, action, damage);
             }
-            
+
             allBattles.push_back(history);
         }
-        
+
         cout << "Game berhasil dimuat.\n";
+        cout << "Data yang dimuat:\n";
+        cout << "- Starglitter: " << starglitter << "\n";
+        cout << "- Team members: " << team.size() << "\n";
+        cout << "- Owned characters: " << ownedCharacters.size() << "\n";
+        cout << "- Equipped lightcones: " << equippedLightcones.size() << "\n";
+        cout << "- Lightcone superimpositions: " << lightconeSuperimposition.size() << "\n";
+        cout << "- Battle histories: " << allBattles.size() << "\n";
+        
     } catch (const exception& e) {
         cerr << "Error saat memuat game: " << e.what() << endl;
+        // Optionally reset data on error
+        team.clear();
+        equippedLightcones.clear();
+        allBattles.clear();
+        bossNames.clear();
+        ownedCharacters.clear();
+        lightconeSuperimposition.clear();
     }
 }
 
@@ -2658,6 +2779,8 @@ void showBattleHistoryAndPerformance() {
     cout << "\nMasukkan ID riwayat battle yang ingin dilihat (1-" << allBattles.size() << ", 0 untuk batal): ";
     int id;
     cin >> id;
+    cin.ignore(numeric_limits<streamsize>::max(), '\n'); 
+
     if (id < 1 || id > (int)allBattles.size()) return;
     
     bool viewMode = true;    // true = dari awal (BFS), false = dari akhir (DFS)
@@ -2689,6 +2812,7 @@ void showBattleHistoryAndPerformance() {
         
         char choice;
         cin >> choice;
+        cin.ignore(numeric_limits<streamsize>::max(), '\n'); 
         
         switch (choice) {
             case 't':
@@ -2710,6 +2834,271 @@ void showBattleHistoryAndPerformance() {
     }
 }
 
+int getValidatedChoice(int min, int max) {
+    string input;
+    int choice;
+
+    while (true) {
+        getline(cin, input);
+
+        // Cek jika input kosong
+        if (input.empty()) {
+            cout << "Input tidak boleh kosong. Coba lagi.\n";
+            continue;
+        }
+
+        // Cek jika input berisi angka saja
+        bool valid = all_of(input.begin(), input.end(), ::isdigit);
+        if (!valid) {
+            cout << "Input hanya boleh angka antara " << min << " sampai " << max << ".\n";
+            continue;
+        }
+
+        choice = stoi(input);
+
+        if (choice < min || choice > max) {
+            cout << "Pilihan hanya antara " << min << " sampai " << max << ".\n";
+        } else {
+            break;
+        }
+    }
+
+    return choice;
+}
+
+int getChoice1to2() {
+    string input;
+    int choice;
+
+    while (true) {
+        getline(cin, input);
+
+        // Cek jika input kosong
+        if (input.empty()) {
+            cout << "Input tidak boleh kosong. Coba lagi.\n";
+            continue;
+        }
+
+        // Cek apakah seluruh karakter adalah digit
+        bool isValid = all_of(input.begin(), input.end(), ::isdigit);
+        if (!isValid) {
+            cout << "Input hanya boleh angka 1 sampai 2.\n";
+            continue;
+        }
+
+        // Ubah ke integer dan cek rentangnya
+        choice = stoi(input);
+        if (choice < 1 || choice > 2) {
+            cout << "Hanya angka 1 atau 2 yang diperbolehkan.\n";
+            continue;
+        }
+
+        break;
+    }
+
+    return choice;
+}
+
+int getChoice0to3() {
+    string input;
+    int choice;
+
+    while (true) {
+        getline(cin, input);
+
+        if (input.empty()) {
+            cout << "Input tidak boleh kosong.\n";
+            continue;
+        }
+
+        // Cek apakah semua karakter digit
+        bool isDigit = all_of(input.begin(), input.end(), ::isdigit);
+        if (!isDigit) {
+            cout << "Input hanya boleh angka 0 sampai 3.\n";
+            continue;
+        }
+
+        choice = stoi(input);
+        if (choice < 0 || choice > 3) {
+            cout << "Pilihan hanya 0, 1, 2, atau 3.\n";
+            continue;
+        }
+
+        return choice;
+    }
+}
+
+int getChoice1to3() {
+    string input;
+    int choice;
+
+    while (true) {
+        getline(cin, input);
+
+        // Cek jika input kosong
+        if (input.empty()) {
+            cout << "Input tidak boleh kosong. Coba lagi.\n";
+            continue;
+        }
+
+        // Cek apakah seluruh karakter adalah digit
+        bool isValid = all_of(input.begin(), input.end(), ::isdigit);
+        if (!isValid) {
+            cout << "Input hanya boleh angka 1 sampai 3.\n";
+            continue;
+        }
+
+        // Ubah ke integer dan cek rentangnya
+        choice = stoi(input);
+        if (choice < 1 || choice > 3) {
+            cout << "Hanya angka 1, 2, atau 3 yang diperbolehkan.\n";
+            continue;
+        }
+
+        break;
+    }
+
+    return choice;
+}
+
+int getChoice1to4() {
+    string input;
+    int choice;
+
+    while (true) {
+        getline(cin, input);
+
+        // Cek jika input kosong
+        if (input.empty()) {
+            cout << "Input tidak boleh kosong. Coba lagi.\n";
+            continue;
+        }
+
+        // Cek apakah seluruh karakter adalah digit
+        bool isValid = all_of(input.begin(), input.end(), ::isdigit);
+        if (!isValid) {
+            cout << "Input hanya boleh angka 1 sampai 4.\n";
+            continue;
+        }
+
+        // Ubah ke integer dan cek rentangnya
+        choice = stoi(input);
+        if (choice < 1 || choice > 4) {
+            cout << "Hanya angka 1, 2, 3 atau 4 yang diperbolehkan.\n";
+            continue;
+        }
+
+        break;
+    }
+
+    return choice;
+}
+
+char getCharNS() {
+    string input;
+
+    while (true) {
+        getline(cin, input);
+
+        // Cek jika input kosong
+        if (input.empty()) {
+            cout << "Input tidak boleh kosong. Coba lagi.\n";
+            continue;
+        }
+
+        // Cek hanya satu karakter dan valid
+        if (input.size() == 1) {
+            char c = tolower(input[0]);
+            if (c == 'n' || c == 's') {
+                return c;
+            }
+        }
+
+        cout << "Input hanya boleh 'n' atau 's'. Coba lagi.\n";
+    }
+}
+
+char getYesOrNo() {
+    string input;
+
+    while (true) {
+        getline(cin, input);
+
+        if (input.empty()) {
+            cout << "Input tidak boleh kosong.\n";
+            continue;
+        }
+
+        if (input.size() == 1) {
+            char c = tolower(input[0]);
+            if (c == 'y' || c == 'n') {
+                return c;
+            }
+        }
+
+        cout << "Input hanya boleh 'y' atau 'n'. Coba lagi.\n";
+    }
+}
+
+
+char getCommand() {
+    string input;
+
+    while (true) {
+        getline(cin, input);
+
+        // Cek jika input kosong
+        if (input.empty()) {
+            cout << "Input tidak boleh kosong. Coba lagi.\n";
+            continue;
+        }
+
+        // Cek panjang input = 1 dan termasuk huruf valid
+        if (input.size() == 1) {
+            char c = tolower(input[0]);
+            if (c == 'n' || c == 'p' || c == 'f' || c == 'l' || c == 's' || c == 'c' || c == 'x') {
+                return c;
+            }
+        }
+
+        cout << "Input hanya boleh huruf n, p, f, l, s, c, atau x. Coba lagi.\n";
+    }
+}
+
+vector<int> getFourValidIndexes(int maxIndex) {
+    vector<int> result;
+    string line;
+    
+    while (true) {
+        getline(cin, line);
+        stringstream ss(line);
+        int num;
+        result.clear();
+        bool invalid = false;
+
+        while (ss >> num) {
+            if (num < 1 || num > maxIndex) {
+                cout << "Nomor " << num << " tidak valid (harus antara 1 dan " << maxIndex << ").\n";
+                invalid = true;
+                break;
+            }
+            result.push_back(num);
+        }
+
+        if (invalid) continue;
+
+        if (result.size() != 4) {
+            cout << "Harus memasukkan tepat 4 angka yang dipisahkan oleh spasi.\n";
+            continue;
+        }
+
+        break;
+    }
+
+    return result;
+}
+
+
 int main() {
     srand(static_cast<unsigned int>(time(0)));
     CharacterCycle cycle(fiveStarCharacters);
@@ -2722,7 +3111,7 @@ int main() {
         cout << "\n=== Honkai: Star Rail Gacha Simulator ===\n";
         cout << "1. Perform Gacha\n2. View Gacha History\n3. Library\n4. Save Game\n5. Load Game\n6. Build Team\n7. View Team\n8. Battle Mode\n9. Battle History & Performance\n10. Shop\n0. Exit\n";
         cout << "Enter your choice: ";
-        cin >> choice;
+        choice = getValidatedChoice(0, 11); 
 
         switch (choice) {
             case 1: {
@@ -2732,7 +3121,7 @@ int main() {
                     cout << "\n== Gacha Menu ==\n";
                     cout << "1. Pull 1x\n2. Pull 10x\n3. Kembali ke Menu Utama\n";
                     cout << "Pilihan Anda: ";
-                    cin >> subChoice;
+                    subChoice = getChoice1to3();                  
                     cout << "\n";
             
                     switch (subChoice) {
@@ -2815,8 +3204,7 @@ int main() {
                         
                                 if (i < hasilGacha.size() - 1) {
                                     cout << "Tekan [n] untuk next, [s] untuk skip semua: ";
-                                    char cmd;
-                                    cin >> cmd;
+                                    char cmd = getCharNS();
                                     if (cmd == 's' || cmd == 'S') {
                                         playGachaSound();
                         
@@ -2864,7 +3252,7 @@ int main() {
                     cout << "3. View Character Queue\n";
                     cout << "4. Kembali ke Menu Utama\n";
                     cout << "Pilih opsi: ";
-                    cin >> hChoice;
+                    hChoice = getChoice1to4();  
 
                     switch (hChoice) {
                         case 1: history.viewHistory(); break;
@@ -2892,7 +3280,7 @@ int main() {
                     cout << "2. Cari Karakter / Lightcone\n";
                     cout << "3. Kembali ke Menu Utama\n";
                     cout << "Pilihan: ";
-                    cin >> sub;
+                    sub = getChoice1to3();  
                     cin.ignore();
             
                     switch (sub) {
