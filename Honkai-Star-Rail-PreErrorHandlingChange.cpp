@@ -1332,6 +1332,8 @@ void showShopMenu() {
         std::cout << "2. Lightcone Shop\n";
         std::cout << "3. Kembali ke Menu Utama\n";
         std::cout << "Pilihan: ";
+        cin.ignore(numeric_limits<streamsize>::max(), '\n'); 
+        
         int menuChoice;
         menuChoice = getChoice1to3();
         
@@ -1415,7 +1417,7 @@ void showCharacterShop() {
             case 'p': case 'P':
                 if (viewMode < 2) { // Only allow purchases from item views
                     // Purchase functionality
-                    // Tidak perlu std::cin.ignore() lagi, buffer sudah dikosongkan sebelumnya
+                    std::cin.ignore(); // Clear input buffer
                     std::cout << "Masukkan nama character yang ingin dibeli: ";
                     std::string itemName;
                     getline(std::cin, itemName);
@@ -1509,7 +1511,7 @@ void showLightconeShop() {
             case 'p': case 'P':
                 if (viewMode < 3) { // Only allow purchases from item views
                     // Purchase functionality
-                    // Tidak perlu std::cin.ignore() lagi, buffer sudah dikosongkan sebelumnya
+                    std::cin.ignore(); // Clear input buffer
                     std::cout << "Masukkan nama lightcone yang ingin dibeli: ";
                     std::string itemName;
                     getline(std::cin, itemName);
@@ -2312,7 +2314,7 @@ void displayTeam() {
 
                     cout << "\nPilih lightcone untuk ditambahkan: ";
                     int lcChoice;
-                    lcChoice = getValidatedChoice(1, 3); // atau rentang sesuai menu
+                    cin >> lcChoice;
                     cin.ignore(numeric_limits<streamsize>::max(), '\n');
                     if (lcChoice >= 1 && lcChoice <= allLightcones.size()) {
                         equippedLightcones[nama] = allLightcones[lcChoice - 1];
@@ -2613,7 +2615,7 @@ void shop() {
         cout << "2. Beli Lightcone (5000 Starglitter)\n";
         cout << "3. Kembali ke Main Menu\n";
         cout << "Pilihan: ";
-        shopMenuChoice = getValidatedChoice(1, 3);
+        cin >> shopMenuChoice;
 
         if (shopMenuChoice == 1 || shopMenuChoice == 2) {
             vector<string>& shopList = (shopMenuChoice == 1) ? shopCharacters : shopLightcones;
@@ -2630,7 +2632,8 @@ void shop() {
                 }
                 cout << "0. Kembali ke Shop Menu\n";
                 cout << "Pilihan: ";
-                int beli = getValidatedChoice(0, shopList.size());
+                int beli;
+                cin >> beli;
 
                 if (beli == 0) break;
                 if (beli < 1 || beli > shopList.size()) {
@@ -2785,7 +2788,8 @@ void showBattleHistoryAndPerformance() {
     }
     cout << "\nMasukkan ID riwayat battle yang ingin dilihat (1-" << allBattles.size() << ", 0 untuk batal): ";
     int id;
-    id = getValidatedChoice(1, (int)allBattles.size());
+    cin >> id;
+    cin.ignore(numeric_limits<streamsize>::max(), '\n'); 
 
     if (id < 1 || id > (int)allBattles.size()) return;
     
