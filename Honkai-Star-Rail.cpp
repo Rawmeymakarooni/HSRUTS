@@ -677,6 +677,7 @@ void bossUltimate(Boss& boss, vector<Character>& team) {
 }
 
 void battle(vector<string>& teamNames) {
+    system("cls");
     string currentBossName = "";
     battleHistory.clear(); // Reset history setiap mulai battle
     string bossName;
@@ -2279,21 +2280,24 @@ pair<string, string> performBannerGacha(int& pity5, int& pity4, BannerType banne
 }
 
 void selectBanner() {
+    system("cls");
     cout << "\n== Pilih Banner ==\n";
     cout << "1. Rate-Up Banner (Castorice)\n";
     cout << "2. Standard Banner\n";
     cout << "3. Rate-Up Lightcone Banner (Castorice)\n";
-    int choice;
-    choice = getChoice1to3();       
+    cout << "4. Kembali ke Menu Utama\n";
+    int choice = getValidatedChoice(1, 4);
     switch (choice) {
         case 1: currentBanner = RATE_UP; break;
         case 2: currentBanner = STANDARD; break;
         case 3: currentBanner = LIGHTCONE; break;
+        case 4: /* kembali ke menu utama, tidak ubah currentBanner */ break;
         default: cout << "Pilihan tidak valid.\n";
     }
 }
 
 void manageTeam() {
+    system("cls");
     cout << "\n== Team Builder ==\n";
     if (ownedCharacters.empty()) {
         cout << "Kamu belum punya karakter.\n";
@@ -2334,6 +2338,7 @@ void manageTeam() {
 
 
 void displayTeam() {
+    system("cls");
     if (team.empty()) {
         cout << "\n== Tim Saat Ini ==\nBelum ada tim.\n";
         return;
@@ -2437,6 +2442,7 @@ void displayStarglitter() {
 }
 
 void saveGame() {
+    system("cls");
     try {
         ofstream out("save_data.txt");
         if (!out) throw runtime_error("Gagal membuka file untuk menyimpan.");
@@ -2495,6 +2501,7 @@ void saveGame() {
 }
 
 void loadGame() {
+    system("cls");
     try {
         ifstream in("save_data.txt");
         if (!in) throw runtime_error("File save tidak ditemukan.");
@@ -3208,12 +3215,14 @@ vector<int> getFourValidIndexes(int maxIndex) {
 int main() {
     srand(static_cast<unsigned int>(time(0)));
     CharacterCycle cycle(fiveStarCharacters);
+    system("cls");
     cout << "\nDaftar Karakter Bintang 5 Standar Yang Tersedia:\n";
     cycle.display(10);
     cout << "\nKarakter Bintang 5 Yang Sedang Rate On: Castorice\n";
 
     int choice;
     do {
+        system("cls");
         cout << "\n=== Honkai: Star Rail Gacha Simulator ===\n";
         cout << "1. Perform Gacha\n2. View Gacha History\n3. Library\n4. Save Game\n5. Load Game\n6. Build Team\n7. View Team\n8. Battle Mode\n9. Battle History & Performance\n10. Shop\n0. Exit\n";
         cout << "Enter your choice: ";
@@ -3224,6 +3233,7 @@ int main() {
                 selectBanner();
                 int subChoice;
                 do {
+                    system("cls");
                     cout << "\n== Gacha Menu ==\n";
                     cout << "1. Pull 1x\n2. Pull 10x\n3. Kembali ke Menu Utama\n";
                     cout << "Pilihan Anda: ";
@@ -3352,6 +3362,7 @@ int main() {
             case 2: {
                 int hChoice;
                 do {
+                    system("cls");
                     cout << "\n== History Gacha ==\n";
                     cout << "1. View Gacha History\n";
                     cout << "2. View Recent Characters\n";
@@ -3381,6 +3392,7 @@ int main() {
             
                 int sub;
                 do {
+                    system("cls");
                     cout << "\n=== Library Menu ===\n";
                     cout << "1. Lihat Isi Tree (Label A-Z)\n";
                     cout << "2. Cari Karakter / Lightcone\n";
