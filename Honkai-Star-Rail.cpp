@@ -932,6 +932,32 @@ class AVLShopTree {
     }
 public:
     ~AVLShopTree() { clear(root); }
+    // Ambil semua karakter di shop (reference ke node, bukan copy)
+    std::vector<AVLShopNode*> getAllCharacterNodes() {
+        std::vector<AVLShopNode*> nodes, result;
+        collectNodePointers(root, nodes);
+        for (auto* node : nodes) {
+            if (node->item.isCharacter) result.push_back(node);
+        }
+        return result;
+    }
+    // Ambil semua lightcone di shop (reference ke node, bukan copy)
+    std::vector<AVLShopNode*> getAllLightconeNodes() {
+        std::vector<AVLShopNode*> nodes, result;
+        collectNodePointers(root, nodes);
+        for (auto* node : nodes) {
+            if (!node->item.isCharacter) result.push_back(node);
+        }
+        return result;
+    }
+private:
+    // Kumpulkan pointer node AVL ke vector
+    void collectNodePointers(AVLShopNode* node, std::vector<AVLShopNode*>& nodes) {
+        if (!node) return;
+        collectNodePointers(node->left, nodes);
+        nodes.push_back(node);
+        collectNodePointers(node->right, nodes);
+    }
     // Find a shop item by name
     AVLShopNode* findItem(AVLShopNode* node, const string& name) {
         if (!node) return nullptr;
@@ -970,9 +996,13 @@ public:
             return false;
         }
         
-        // Check stock for lightcones (characters don't have stock limits)
-        if (!itemNode->item.isCharacter && itemNode->item.stock <= 0) {
-            std::cout << "\nStok lightcone habis!\n";
+        // Check stock for both characters and lightcones
+        if (itemNode->item.stock <= 0) {
+            if (itemNode->item.isCharacter) {
+                std::cout << "\nKarakter ini sudah dibeli!\n";
+            } else {
+                std::cout << "\nStok lightcone habis!\n";
+            }
             return false;
         }
         
@@ -992,13 +1022,13 @@ public:
                     std::cout << "\nBerhasil membeli karakter: " << itemNode->item.name << "!\n";
                     // Item successfully added to inventory
                     // (Character tree is updated elsewhere when displaying)
-                
-                    // Decrease stock for characters since they can only be bought once
-                    updateStock(root, itemNode->item.name, 0);
                 } else {
                     std::cout << "\nBerhasil meningkatkan karakter " << itemNode->item.name 
                               << " ke Eidolon " << eidolon << "!\n";
                 }
+                // Decrease stock for characters since they can only be bought once (regardless of eidolon level)
+                // Setting stock to 0 after any character purchase ensures they can't be bought again from shop
+                updateStock(root, itemNode->item.name, 0);
             }
         } else {
             // Lightcone purchase - add to superimposition or increment
@@ -1362,19 +1392,57 @@ void showCharacterShop() {
         std::cout << "\n===== CHARACTER SHOP =====\n";
         std::cout << "Starglitter Anda: " << starglitter << "\n";
         
-        // Create character-specific AVL tree
-        AVLShopTree characterShopTree;
-        for (const auto& character : shopCharacters) {
-            int price = 5000;
-            characterShopTree.insert(ShopItem(character, price, 1, true)); // Stock 1 for characters
+        // Gunakan shopTree global agar stok karakter benar-benar berkurang
+        // Display characters berdasarkan view mode dari shopTree global
+        // Tampilkan hanya karakter di shop character
+        std::vector<AVLShopNode*> charNodes = shopTree.getAllCharacterNodes();
+        // Dapatkan semua node karakter dari AVL tree untuk tampilan real-time
+        // Membuat copy vector untuk operasi sorting
+        vector<AVLShopNode*> sortedCharNodes = charNodes;
+
+        // Sort by name/price sesuai viewMode
+        if (viewMode == 0) {
+            // Sorting berdasarkan nama (ascending)
+            sort(sortedCharNodes.begin(), sortedCharNodes.end(), [](AVLShopNode* a, AVLShopNode* b) {
+                return a->item.name < b->item.name;
+            });
+            std::cout << "\n=== CHARACTER SHOP (BY NAME) ===\n";
+        } else if (viewMode == 1) {
+            // Sorting berdasarkan harga (ascending)
+            sort(sortedCharNodes.begin(), sortedCharNodes.end(), [](AVLShopNode* a, AVLShopNode* b) {
+                return a->item.price < b->item.price;
+            });
+            std::cout << "\n=== CHARACTER SHOP (BY PRICE) ===\n";
         }
-        
-        // Display characters based on current view mode
-        switch (viewMode) {
-            case 0: characterShopTree.displayByName(); break;
-            case 1: characterShopTree.displayByPrice(); break;
-            case 2: characterShopTree.displayAVLStructure(); break;
-            case 3: characterShopTree.displayAVLStats(); break;
+
+        if (viewMode < 2) {
+            if (sortedCharNodes.empty()) std::cout << "(Shop kosong)\n";
+            else {
+                std::cout << "+" << std::string(40, '-') << "+" << std::string(12, '-') << "+" << std::string(10, '-') << "+" << std::string(9, '-') << "+\n";
+                std::cout << "| " << std::left << std::setw(38) << "Item Name" << " | ";
+                std::cout << std::setw(10) << "Type" << " | ";
+                std::cout << std::right << std::setw(8) << "Price" << " | ";
+                std::cout << std::setw(7) << "Stock" << " |\n";
+                std::cout << "+" << std::string(40, '-') << "+" << std::string(12, '-') << "+" << std::string(10, '-') << "+" << std::string(9, '-') << "+\n";
+                bool anyReady = false;
+                for (const auto& node : sortedCharNodes) {
+                    const auto& item = node->item;
+                    std::string type = "Character";
+                    std::string stockStr = (item.stock == 0) ? "HABIS" : std::to_string(item.stock);
+                    if (item.stock > 0) anyReady = true;
+                    std::cout << "| " << std::left << std::setw(38) << item.name << " | ";
+                    std::cout << std::setw(10) << type << " | ";
+                    std::cout << std::right << std::setw(8) << item.price << " | ";
+                    std::cout << std::setw(7) << stockStr << " |\n";
+                }
+                std::cout << "+" << std::string(40, '-') << "+" << std::string(12, '-') << "+" << std::string(10, '-') << "+" << std::string(9, '-') << "+\n";
+                // Tampilkan opsi beli hanya jika ada item dengan stock > 0
+                if (anyReady) std::cout << "[p] Beli Character\n";
+            }
+        } else if (viewMode == 2) {
+            shopTree.displayAVLStructure();
+        } else if (viewMode == 3) {
+            shopTree.displayAVLStats();
         }
         
         std::cout << "[t] Toggle View Mode (" << 
@@ -1382,10 +1450,7 @@ void showCharacterShop() {
              viewMode == 1 ? "Price -> AVL Structure" : 
              viewMode == 2 ? "AVL Structure -> AVL Stats" : "AVL Stats -> Name") << ")\n";
         
-        // Only show purchase option if not in AVL structure or stats view mode
-        if (viewMode < 2) {
-            std::cout << "[p] Beli Character\n";
-        }
+        // Purchase option is already shown in the table view if any item is available
         
         // AVL-specific explanations
         if (viewMode == 2) {
@@ -1424,9 +1489,8 @@ void showCharacterShop() {
                     if (shopTree.purchaseItem(itemName, starglitter)) {
                         // Success message - saving is handled in the purchaseItem method
                         std::cout << "Pembelian character berhasil! Starglitter tersisa: " << starglitter << "\n";
-                    } else {
-                        std::cout << "Gagal membeli character. Pastikan nama karakter benar.\n";
                     }
+                    // Tidak perlu pesan error tambahan karena sudah ada di method purchaseItem
                     system("pause");
                 } else {
                     std::cout << "Untuk membeli character, silahkan gunakan tampilan nama atau harga.\n";
@@ -1453,21 +1517,61 @@ void showLightconeShop() {
         std::cout << "\n===== LIGHTCONE SHOP =====\n";
         std::cout << "Starglitter Anda: " << starglitter << "\n";
         
-        // Create lightcone-specific AVL tree
-        AVLShopTree lightconeShopTree;
-        for (const auto& lightcone : shopLightcones) {
-            int price = 3400 + (rand() % 1601); // Random price between 3400-5000
-            int stock = (rand() % 3) + 1; // Random stock between 1-3
-            lightconeShopTree.insert(ShopItem(lightcone, price, stock, false));
-        }
+        // Gunakan shopTree global agar stok lightcone benar-benar berkurang
+        // Display lightcones berdasarkan view mode dari shopTree global
+        // Tampilkan hanya lightcone di shop lightcone
+        std::vector<AVLShopNode*> lcNodes = shopTree.getAllLightconeNodes();
+        // Dapatkan semua node lightcone dari AVL tree untuk tampilan real-time
+        // Membuat copy vector untuk operasi sorting
+        vector<AVLShopNode*> sortedLcNodes = lcNodes;
         
-        // Display lightcones based on current view mode
-        switch (viewMode) {
-            case 0: lightconeShopTree.displayByName(); break;
-            case 1: lightconeShopTree.displayByPrice(); break;
-            case 2: lightconeShopTree.displayByStock(); break;
-            case 3: lightconeShopTree.displayAVLStructure(); break;
-            case 4: lightconeShopTree.displayAVLStats(); break;
+        // Sorting sesuai dengan view mode
+        if (viewMode == 0) {
+            // Sorting berdasarkan nama (ascending)
+            sort(sortedLcNodes.begin(), sortedLcNodes.end(), [](AVLShopNode* a, AVLShopNode* b) {
+                return a->item.name < b->item.name;
+            });
+            std::cout << "\n=== LIGHTCONE SHOP (BY NAME) ===\n";
+        } else if (viewMode == 1) {
+            // Sorting berdasarkan harga (ascending)
+            sort(sortedLcNodes.begin(), sortedLcNodes.end(), [](AVLShopNode* a, AVLShopNode* b) {
+                return a->item.price < b->item.price;
+            });
+            std::cout << "\n=== LIGHTCONE SHOP (BY PRICE) ===\n";
+        } else if (viewMode == 2) {
+            // Sorting berdasarkan stock (descending)
+            sort(sortedLcNodes.begin(), sortedLcNodes.end(), [](AVLShopNode* a, AVLShopNode* b) {
+                return a->item.stock > b->item.stock;
+            });
+            std::cout << "\n=== LIGHTCONE SHOP (BY STOCK) ===\n";
+        }
+                if (viewMode < 3) {
+            if (sortedLcNodes.empty()) std::cout << "(Shop kosong)\n";
+            else {
+                std::cout << "+" << std::string(40, '-') << "+" << std::string(12, '-') << "+" << std::string(10, '-') << "+" << std::string(9, '-') << "+\n";
+                std::cout << "| " << std::left << std::setw(38) << "Item Name" << " | ";
+                std::cout << std::setw(10) << "Type" << " | ";
+                std::cout << std::right << std::setw(8) << "Price" << " | ";
+                std::cout << std::setw(7) << "Stock" << " |\n";
+                std::cout << "+" << std::string(40, '-') << "+" << std::string(12, '-') << "+" << std::string(10, '-') << "+" << std::string(9, '-') << "+\n";
+                bool anyReady = false;
+                for (const auto& node : sortedLcNodes) {
+                    const auto& item = node->item;
+                    std::string type = "Lightcone";
+                    std::string stockStr = (item.stock == 0) ? "HABIS" : std::to_string(item.stock);
+                    if (item.stock > 0) anyReady = true;
+                    std::cout << "| " << std::left << std::setw(38) << item.name << " | ";
+                    std::cout << std::setw(10) << type << " | ";
+                    std::cout << std::right << std::setw(8) << item.price << " | ";
+                    std::cout << std::setw(7) << stockStr << " |\n";
+                }
+                std::cout << "+" << std::string(40, '-') << "+" << std::string(12, '-') << "+" << std::string(10, '-') << "+" << std::string(9, '-') << "+\n";
+                if (anyReady) std::cout << "[p] Beli Lightcone\n";
+            }
+        } else if (viewMode == 3) {
+            shopTree.displayAVLStructure();
+        } else if (viewMode == 4) {
+            shopTree.displayAVLStats();
         }
         
         std::cout << "[t] Toggle View Mode (" << 
@@ -1476,10 +1580,7 @@ void showLightconeShop() {
              viewMode == 2 ? "Stock -> AVL Structure" :
              viewMode == 3 ? "AVL Structure -> AVL Stats" : "AVL Stats -> Name") << ")\n";
         
-        // Only show purchase option if not in AVL structure or stats view mode
-        if (viewMode < 3) {
-            std::cout << "[p] Beli Lightcone\n";
-        }
+        // Purchase option is already shown in the table view if any items have stock > 0
         
         // AVL-specific explanations
         if (viewMode == 3) {
@@ -1518,9 +1619,8 @@ void showLightconeShop() {
                     if (shopTree.purchaseItem(itemName, starglitter)) {
                         // Success message - saving is handled in the purchaseItem method
                         std::cout << "Pembelian lightcone berhasil! Starglitter tersisa: " << starglitter << "\n";
-                    } else {
-                        std::cout << "Gagal membeli lightcone. Pastikan nama lightcone benar dan stok tersedia.\n";
                     }
+                    // Tidak perlu pesan error tambahan karena sudah ada di method purchaseItem
                     system("pause");
                 } else {
                     std::cout << "Untuk membeli lightcone, silahkan gunakan tampilan nama, harga, atau stok.\n";
