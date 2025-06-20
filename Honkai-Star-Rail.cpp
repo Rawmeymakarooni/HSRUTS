@@ -2279,7 +2279,7 @@ pair<string, string> performBannerGacha(int& pity5, int& pity4, BannerType banne
     
 }
 
-void selectBanner() {
+int selectBanner() {
     system("cls");
     cout << "\n== Pilih Banner ==\n";
     cout << "1. Rate-Up Banner (Castorice)\n";
@@ -2294,6 +2294,7 @@ void selectBanner() {
         case 4: /* kembali ke menu utama, tidak ubah currentBanner */ break;
         default: cout << "Pilihan tidak valid.\n";
     }
+    return choice;
 }
 
 void manageTeam() {
@@ -3230,7 +3231,8 @@ int main() {
 
         switch (choice) {
             case 1: {
-                selectBanner();
+                int bannerChoice = selectBanner();
+                if (bannerChoice == 4) break;
                 int subChoice;
                 do {
                     system("cls");
